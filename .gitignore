@@ -1,0 +1,28 @@
+node_modules/
+dist/
+build/
+coverage/
+.turbo/
+
+# local env files - every variant except the committed template.
+# The previous list (.env / .env.local / .env.*.local) silently missed
+# names like `.env.test` and `.env.production`.
+.env
+.env.*
+!.env.example
+
+# local sqlite databases (zero-setup demo DB)
+prisma/sqlite/*.db
+prisma/sqlite/*.db-journal
+prisma/sqlite/schema.prisma
+
+# published site snapshots
+.storage/
+
+# editor / os
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.log
+npm-debug.log*

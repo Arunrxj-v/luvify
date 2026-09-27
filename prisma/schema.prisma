@@ -1,0 +1,349 @@
+// ---------------------------------------------------------------------------
+// Luvify - canonical database schema (source of truth).
+//
+// Targets PostgreSQL. `scripts/sync-sqlite-schema.mjs` derives a SQLite variant
+// (prisma/sqlite/schema.prisma) from this file for zero-setup local runs, so
+// this schema intentionally stays portable:
+//   * no native database types (@db.*)
+//   * no enums (statuses are String + TypeScript/Zod unions from @luvify/shared)
+//   * no Json columns / scalar lists (structured data is a validated JSON string)
+// ---------------------------------------------------------------------------
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  avatarUrl String?
+  /// OWNER | ADMIN | DEMO
+  role      String   @default("OWNER")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projects Project[]
+}
+
+// ---------------------------------------------------------------------------
+// Projects & conversations
+// ---------------------------------------------------------------------------
+
+model Project {
+  id                  String  @id @default(cuid())
+  userId              String
+  /// Display name of the website/project
+  name                String
+  slug                String  @unique
+  businessName        String
+  businessDescription String
+  /// WebsiteType from @luvify/shared
+  websiteType         String
+  templateId          String?
+  /// ProjectStatus: DISCOVERY | REQUIREMENTS_READY | GENERATING | DRAFT | PUBLISHED
+  status              String  @default("DISCOVERY")
+  /// Optional externally hosted thumbnail; the UI otherwise derives a swatch
+  thumbnailUrl        String?
+  currentVersionId    String?
+  publishedAt         DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  user            User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversations   Conversation[]
+  messages        Message[]
+  requirement     Requirement?
+  specification   WebsiteSpecification?
+  website         Website?
+  files           WebsiteFile[]
+  versions        WebsiteVersion[]
+  deployments     Deployment[]
+  businessProfile BusinessProfile?
+  products        Product[]
+  customers       Customer[]
+  orders          Order[]
+  domains         Domain[]
+  activities      ProjectActivity[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+model Conversation {
+  id        String   @id @default(cuid())
+  projectId String
+  title     String
+  /// REQUIREMENTS | BUILDER | SUPPORT
+  kind      String   @default("REQUIREMENTS")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@index([projectId, kind])
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  projectId      String
+  conversationId String
+  /// user | assistant | system | generation
+  role           String
+  content        String
+  /// JSON encoded MessagePayload (questions, suggestions, completeness, ...)
+  payload        String?
+  createdAt      DateTime @default(now())
+
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@index([conversationId, createdAt])
+}
+
+
+// ---------------------------------------------------------------------------
+// AI artifacts
+// ---------------------------------------------------------------------------
+
+model Requirement {
+  id             String   @id @default(cuid())
+  projectId      String   @unique
+  /// JSON encoded Requirements tree
+  data           String
+  completeness   Int      @default(0)
+  /// JSON encoded completeness breakdown per category
+  breakdown      String?
+  lastAnalyzedAt DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model WebsiteSpecification {
+  id        String   @id @default(cuid())
+  projectId String   @unique
+  /// JSON encoded WebsiteSpecification
+  data      String
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Website {
+  id        String   @id @default(cuid())
+  projectId String   @unique
+  /// JSON encoded SiteDocument - canonical render input for preview + publish
+  document  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model WebsiteFile {
+  id        String   @id @default(cuid())
+  projectId String
+  path      String
+  content   String
+  /// tsx | ts | css | json | md
+  language  String   @default("tsx")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, path])
+  @@index([projectId])
+}
+
+model WebsiteVersion {
+  id                String   @id @default(cuid())
+  projectId         String
+  versionNumber     Int
+  /// JSON encoded WebsiteSpecification snapshot
+  specification     String?
+  /// JSON encoded SiteDocument snapshot
+  document          String
+  /// JSON encoded GeneratedFile[] snapshot
+  files             String
+  changeDescription String
+  /// generation | modification | restore | template | seed
+  source            String   @default("generation")
+  createdAt         DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, versionNumber])
+  @@index([projectId, createdAt])
+}
+
+model Deployment {
+  id            String    @id @default(cuid())
+  projectId     String
+  versionNumber Int
+  /// PENDING | BUILDING | READY | FAILED
+  status        String    @default("PENDING")
+  url           String?
+  /// local | vercel | netlify | cloudflare
+  provider      String    @default("local")
+  message       String?
+  createdAt     DateTime  @default(now())
+  publishedAt   DateTime?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+}
+
+model ProjectActivity {
+  id        String   @id @default(cuid())
+  projectId String
+  /// project_created | requirements_updated | specification_generated | website_generated | website_modified | version_restored | published | export
+  type      String
+  message   String
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+}
+
+
+// ---------------------------------------------------------------------------
+// Shopify-like business layer (foundation for products / orders / customers /
+// payments / domains). No real payment processing happens in the MVP.
+// ---------------------------------------------------------------------------
+
+model BusinessProfile {
+  id          String   @id @default(cuid())
+  projectId   String   @unique
+  name        String
+  description String?
+  email       String?
+  phone       String?
+  address     String?
+  currency    String   @default("USD")
+  timezone    String?
+  logoText    String?
+  /// JSON: { instagram?, x?, facebook?, linkedin?, tiktok?, youtube? }
+  socials     String?
+  /// JSON: { provider, status, ... } - status is "not_configured" until keys exist
+  payments    String?
+  /// JSON: { titleTemplate?, defaultDescription?, keywords?, robots? }
+  seo         String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Product {
+  id             String   @id @default(cuid())
+  projectId      String
+  name           String
+  slug           String
+  description    String?
+  priceCents     Int      @default(0)
+  compareAtCents Int?
+  currency       String   @default("USD")
+  category       String?
+  imageUrl       String?
+  /// DRAFT | ACTIVE | ARCHIVED
+  status         String   @default("DRAFT")
+  inventory      Int?
+  /// JSON: Array<{ name: string, options: string[] }>
+  variants       String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  orderItems OrderItem[]
+
+  @@unique([projectId, slug])
+  @@index([projectId])
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  projectId String
+  name      String
+  email     String
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  orders  Order[]
+
+  @@unique([projectId, email])
+  @@index([projectId])
+}
+
+model Order {
+  id         String   @id @default(cuid())
+  projectId  String
+  customerId String?
+  number     String
+  /// PENDING | PAID | FULFILLED | CANCELLED | REFUNDED
+  status     String   @default("PENDING")
+  currency   String   @default("USD")
+  totalCents Int      @default(0)
+  /// storefront | manual | import
+  source     String   @default("manual")
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  project  Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  customer Customer?   @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  items    OrderItem[]
+
+  @@unique([projectId, number])
+  @@index([projectId, createdAt])
+}
+
+model OrderItem {
+  id             String  @id @default(cuid())
+  orderId        String
+  productId      String?
+  name           String
+  quantity       Int     @default(1)
+  unitPriceCents Int     @default(0)
+
+  order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+}
+
+model Domain {
+  id                String   @id @default(cuid())
+  projectId         String
+  hostname          String
+  isPrimary         Boolean  @default(false)
+  /// PENDING | VERIFIED | ERROR
+  status            String   @default("PENDING")
+  verificationToken String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([hostname])
+  @@index([projectId])
+}

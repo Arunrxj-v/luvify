@@ -1,0 +1,36 @@
+{
+  "name": "luvify",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Luvify - AI-powered website building platform (React + TypeScript + Express + Prisma)",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n server,web -c cyan,magenta \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:server": "npm --workspace @luvify/server run dev",
+    "dev:web": "npm --workspace @luvify/web run dev",
+    "build": "npm --workspace @luvify/web run build",
+    "start:server": "npm --workspace @luvify/server run start",
+    "typecheck": "npm --workspace @luvify/shared run typecheck && npm --workspace @luvify/site-renderer run typecheck && npm --workspace @luvify/server run typecheck && npm --workspace @luvify/web run typecheck",
+    "test": "npm --workspace @luvify/shared run test && npm --workspace @luvify/site-renderer run test && npm --workspace @luvify/server run test",
+    "db:sqlite": "node scripts/sync-sqlite-schema.mjs && prisma db push --schema prisma/sqlite/schema.prisma --skip-generate && prisma generate --schema prisma/sqlite/schema.prisma",
+    "db:postgres:migrate": "prisma migrate deploy && prisma generate",
+    "db:postgres:dev": "prisma migrate dev && prisma generate",
+    "db:seed": "tsx --tsconfig tsconfig.base.json apps/server/src/seed.ts",
+    "db:studio": "prisma studio --schema prisma/sqlite/schema.prisma",
+    "setup": "npm run db:sqlite && npm run db:seed",
+    "e2e": "tsx --tsconfig tsconfig.base.json apps/server/scripts/e2e-flow.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "concurrently": "^9.1.0",
+    "prisma": "^6.2.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
