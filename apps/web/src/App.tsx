@@ -329,8 +329,16 @@ export function App(): JSX.Element {
           Luvify <span className="brand-sub">studio</span>
         </div>
         <div className="topbar-meta">
-          <span className={health?.database === "connected" ? "pill ok" : "pill warn"}>
-            {health ? `API ${health.database} · AI ${health.aiProvider}` : "connecting..."}
+          <span
+            className={
+              health?.database === "connected" && health.aiKeyConfigured ? "pill ok" : "pill warn"
+            }
+          >
+            {health
+              ? `API ${health.database} · AI ${health.aiProvider}${
+                  health.aiProvider === "openrouter" ? (health.aiKeyConfigured ? " ✓" : " · key missing") : ""
+                }`
+              : "connecting..."}
           </span>
           {project?.deploymentUrl ? (
             <a className="pill link" href={project.deploymentUrl} target="_blank" rel="noreferrer">

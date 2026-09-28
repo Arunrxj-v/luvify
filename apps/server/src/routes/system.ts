@@ -47,6 +47,9 @@ systemRouter.get(
       version: env.version,
       aiProvider: env.aiProvider,
       aiModel: env.aiModel,
+      // Presence only - never the key. Lets the UI distinguish "AI connected"
+      // from "AI configured without a key" without exposing the secret.
+      aiKeyConfigured: env.openrouterApiKey.length > 0,
       database: (await checkDatabase()) ? "connected" : "error",
       timestamp: new Date().toISOString(),
     };

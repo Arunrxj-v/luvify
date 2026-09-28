@@ -282,6 +282,13 @@ export interface HealthResponseDto {
   version: string;
   aiProvider: string;
   aiModel: string;
+  /**
+   * Whether a provider API key is configured SERVER-SIDE.
+   *
+   * A boolean only: the key itself is never part of any API response, so the
+   * browser can show "connected" without ever receiving the secret.
+   */
+  aiKeyConfigured: boolean;
   database: "connected" | "error";
   timestamp: string;
 }

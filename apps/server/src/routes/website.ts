@@ -35,6 +35,7 @@ import {
   resolveTemplateId,
 } from "../generate";
 import { prisma } from "../prisma";
+import { aiIsEnabled, generateSiteWithAI, getAIProvider, runAI } from "../services/ai";
 import { nextVersionNumber, persistSite, publishProject, verifyDocumentIsolation } from "../pipeline";
 import {
   documentOf,
@@ -92,6 +93,70 @@ websiteRouter.post(
     // refreshed first, so generation is always grounded in the client's
     // current requirements rather than a stale snapshot.
     const requirements = await syncDerivedRequirements(project.id, requirementsOf(project));
+
+    // REAL AI PATH. OpenRouter decides the architecture and writes every page.
+    // Any provider failure is translated into a specific API error and returned
+    // to the client - generation never falls back to fabricated content.
+    if (aiIsEnabled()) {
+      const specificationVersion = (project.specification?.version ?? 0) + 1;
+      const versionNumber = await nextVersionNumber(project.id);
+      const generated = await runAI(() =>
+        generateSiteWithAI(getAIProvider(), {
+          project: {
+            id: project.id,
+            name: project.name,
+            businessName: project.businessName,
+            websiteType: project.websiteType,
+            templateId: project.templateId,
+          },
+          requirements,
+          versionNumber,
+          specificationVersion,
+          templateId: input.templateId ?? null,
+        }),
+      );
+
+      const templateId = resolveTemplateId({
+        requested: input.templateId,
+        current: project.templateId,
+        websiteType: project.websiteType,
+        archetype: generated.specification.architecture.archetype,
+      });
+
+      const data = JSON.stringify(generated.specification);
+      await prisma.websiteSpecification.upsert({
+        where: { projectId: project.id },
+        create: { projectId: project.id, data, version: specificationVersion },
+        update: { data, version: specificationVersion },
+      });
+      // The model's plan/summary become the project's stored requirements, so
+      // the preview panel and the next generation agree with what was built.
+      await saveRequirements(project.id, generated.requirements);
+      await recordActivity(
+        project.id,
+        "specification_generated",
+        `Specification v${specificationVersion} generated with ${generated.report.model}`,
+      );
+
+      const exported = exportSite(generated.document, {
+        projectName: project.slug,
+        siteUrl: env.publicBaseUrl,
+      });
+      const body: GenerateWebsiteResponseDto = await persistSite({
+        project,
+        document: generated.document,
+        specification: generated.specification,
+        files: exported.files,
+        changeDescription:
+          input.notes?.trim() ||
+          `Generated ${generated.document.siteName} with ${generated.report.model}`,
+        activityType: "website_generated",
+        templateId,
+        source: "generation",
+      });
+      res.json(body);
+      return;
+    }
 
     let specification = existingSpecification(project.specification);
     if (!specification || input.regenerateSpecification || specificationIsStale(specification, requirements)) {
@@ -172,14 +237,14 @@ websiteRouter.post(
       archetype: pagePlanFor(derived).archetype,
     });
     const versionNumber = await nextVersionNumber(project.id);
-    const specification = buildSpecification({
+    let specification = buildSpecification({
       siteName: project.businessName || project.name,
       websiteType: project.websiteType,
       requirements: derived,
       provider: env.aiProvider,
       version: project.specification?.version ?? 1,
     });
-    const after = buildDocument({
+    let after = buildDocument({
       project,
       requirements: derived,
       specification,
@@ -187,6 +252,28 @@ websiteRouter.post(
       provider: env.aiProvider,
       templateId,
     });
+
+    // REAL AI PATH: the change request is applied by regenerating page content
+    // through OpenRouter from the corrected requirements.
+    if (aiIsEnabled()) {
+      const generated = await runAI(() =>
+        generateSiteWithAI(getAIProvider(), {
+          project: {
+            id: project.id,
+            name: project.name,
+            businessName: project.businessName,
+            websiteType: project.websiteType,
+            templateId: project.templateId,
+          },
+          requirements: derived,
+          versionNumber,
+          specificationVersion: (project.specification?.version ?? 0) + 1,
+          templateId,
+        }),
+      );
+      specification = generated.specification;
+      after = generated.document;
+    }
     const diff = diffDocuments(before, after);
     const exported = exportSite(after, { projectName: project.slug, siteUrl: env.publicBaseUrl });
     const instruction = input.instruction.trim();

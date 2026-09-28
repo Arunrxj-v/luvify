@@ -23,6 +23,7 @@
     "db:postgres:dev": "prisma migrate dev && prisma generate",
     "db:seed": "tsx --tsconfig tsconfig.base.json apps/server/src/seed.ts",
     "db:studio": "prisma studio --schema prisma/sqlite/schema.prisma",
+    "ai:probe": "tsx --tsconfig tsconfig.base.json apps/server/scripts/ai-probe.ts",
     "setup": "npm run db:sqlite && npm run db:seed",
     "e2e": "tsx --tsconfig tsconfig.base.json apps/server/scripts/e2e-flow.ts"
   },

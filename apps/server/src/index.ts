@@ -10,10 +10,11 @@ import cors from "cors";
 import express from "express";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
-import { env } from "./env";
+import { env, envCandidatesHint, envFile } from "./env";
 import { errorHandler, notFoundHandler } from "./errors";
 import { prisma } from "./prisma";
 import { apiRouter } from "./routes";
+import { reportAIConfiguration } from "./services/ai";
 
 export function createApp(): express.Express {
   const app = express();
@@ -55,6 +56,16 @@ const server = app.listen(env.port, () => {
   console.log(`[luvify] API server listening on http://localhost:${env.port}`);
   console.log(`[luvify] health check: http://localhost:${env.port}/api/health`);
   console.log(`[luvify] CORS allowed origins: ${env.corsOrigins.join(", ")}`);
+  // Which file the settings came from (path only, never contents), so a
+  // missing/renamed .env is diagnosable from the startup log.
+  console.log(
+    envFile
+      ? `[luvify] env file: ${envFile}`
+      : `[luvify] env file: NOT FOUND - checked ${envCandidatesHint()}, using process environment only`,
+  );
+  // Reports the provider/model and whether OPENROUTER_API_KEY is set, without
+  // ever printing the key itself.
+  reportAIConfiguration();
 });
 
 server.on("error", (error: NodeJS.ErrnoException) => {

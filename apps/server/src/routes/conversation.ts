@@ -12,6 +12,7 @@ import {
   applyAnswer,
   applyClientCorrections,
   archetypeLabel,
+  buildProjectKnowledge,
   computeCompleteness,
   deriveProductSummary,
   detectChangeRequest,
@@ -24,6 +25,15 @@ import {
 import { apiHandler, parseWith } from "../errors";
 import { env } from "../env";
 import { archetypeFor, pagePlanFor } from "../generate";
+import {
+  aiIsEnabled,
+  composeChatReply,
+  extractRequirements,
+  getAIProvider,
+  removalSentences,
+  requirementUpdateToPatch,
+  runAI,
+} from "../services/ai";
 import { completenessSnapshot, nextQuestion } from "../interview";
 import { prisma } from "../prisma";
 import {
@@ -37,9 +47,12 @@ import {
 
 export const conversationRouter = Router({ mergeParams: true });
 
-async function recentMessages(conversationId: string) {
+/** Scoped to one project explicitly: messages are only ever read for the
+ * conversation we just loaded *and* the project from the route params, so a
+ * conversation id can never surface another project's transcript. */
+async function recentMessages(conversationId: string, projectId: string) {
   const rows = await prisma.message.findMany({
-    where: { conversationId },
+    where: { conversationId, projectId },
     orderBy: { createdAt: "asc" },
     take: 200,
   });
@@ -54,7 +67,7 @@ conversationRouter.get(
     const requirements = requirementsOf(project);
     const report = computeCompleteness(requirements);
 
-    let messages = await recentMessages(conversation.id);
+    let messages = await recentMessages(conversation.id, project.id);
     if (messages.length === 0) {
       const question = nextQuestion(requirements);
       const row = await prisma.message.create({
@@ -265,7 +278,7 @@ interface ChatInput {
 async function runChat(projectId: string, input: ChatInput): Promise<ChatResponseDto> {
   const project = await loadProject(projectId);
   const conversation = await ensureConversation(project.id, "REQUIREMENTS", "Requirements");
-  const existing = await recentMessages(conversation.id);
+  const existing = await recentMessages(conversation.id, project.id);
 
   let requirements = requirementsOf(project);
   let messages = existing;
@@ -291,6 +304,29 @@ async function runChat(projectId: string, input: ChatInput): Promise<ChatRespons
       );
     }
     Object.assign(patch, extractRequirementsFromText(text, requirements));
+
+    // REAL AI PATH: the model extracts the structured requirement update from
+    // the client's message, scoped to this project's knowledge only.
+    let correctionText = text;
+    if (aiIsEnabled()) {
+      const knowledge = buildProjectKnowledge(requirements, { projectId: project.id });
+      const update = await runAI(() =>
+        extractRequirements(
+          getAIProvider(),
+          {
+            projectId: project.id,
+            siteName: project.businessName || project.name,
+            websiteType: project.websiteType,
+            knowledge,
+          },
+          text,
+          existing.map((message) => ({ role: message.role, content: message.content })),
+        ),
+      );
+      Object.assign(patch, requirementUpdateToPatch(update, requirements));
+      // Declared removals reuse the existing, tested correction pass.
+      correctionText = `${text} ${removalSentences(update.removals)}`.trim();
+    }
 
     // Explicit site-change requests ("change the About page to a darker
     // design") are queued on the requirements so they stay attached to the
@@ -333,7 +369,7 @@ async function runChat(projectId: string, input: ChatInput): Promise<ChatRespons
     // Client corrections override old information: "we don't sell hoodies
     // anymore" removes hoodies from the knowledge base so future generation
     // never mentions them again.
-    requirements = applyClientCorrections(requirements, text);
+    requirements = applyClientCorrections(requirements, correctionText);
 
     // Classify the website from the updated requirements and persist the
     // approved page plan, so chat ("add a pricing page", "drop About") keeps
@@ -353,17 +389,38 @@ async function runChat(projectId: string, input: ChatInput): Promise<ChatRespons
       (name) => !before.website.requiredPages.includes(name),
     );
     const summaryUpdated = requirements.business.productSummary !== before.business.productSummary;
-    const content = composeReply({
-      projectName: project.businessName || project.name,
-      hasSite: Boolean(project.website),
-      report,
-      question,
-      changedLabels: labelsFor(updatedFields),
-      addedPages,
-      changeRequest,
-      productSummary: requirements.business.productSummary,
-      summaryUpdated,
-    });
+    const acknowledged = labelsFor(updatedFields);
+    // REAL AI PATH: the reply is composed by the model from this project's
+    // knowledge; the deterministic composer remains the offline fallback path
+    // only when the mock provider is explicitly selected.
+    const content = aiIsEnabled()
+      ? await runAI(() =>
+          composeChatReply(
+            getAIProvider(),
+            {
+              projectId: project.id,
+              siteName: project.businessName || project.name,
+              websiteType: project.websiteType,
+              knowledge: buildProjectKnowledge(requirements, { projectId: project.id }),
+            },
+            {
+              userMessage: text,
+              acknowledged,
+              nextQuestion: question?.question ?? "",
+            },
+          ),
+        )
+      : composeReply({
+          projectName: project.businessName || project.name,
+          hasSite: Boolean(project.website),
+          report,
+          question,
+          changedLabels: acknowledged,
+          addedPages,
+          changeRequest,
+          productSummary: requirements.business.productSummary,
+          summaryUpdated,
+        });
 
     const assistantRow = await prisma.message.create({
       data: {
