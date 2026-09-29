@@ -40,7 +40,7 @@ function formatValue(value: unknown): string {
   }
 }
 
-/** Emits `[AI] event=... key=value ...`, skipping empty and credential fields. */
+/** Emits `HH:MM:SS.mmm [AI] event=... key=value ...`, skipping empty and credential fields. */
 export function logAI(event: string, fields: AILogFields): void {
   const parts: string[] = [`[AI] event=${event}`];
   for (const [name, value] of Object.entries(fields)) {
@@ -49,7 +49,14 @@ export function logAI(event: string, fields: AILogFields): void {
     if (!formatted) continue;
     parts.push(`${name}=${formatted}`);
   }
-  console.log(parts.join(" "));
+  // Local generation can run for minutes per call, so without a wall-clock
+  // timestamp a sequence of retries is impossible to line up with the state
+  // of the Ollama daemon afterwards.
+  const now = new Date();
+  const stamp = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(
+    now.getSeconds(),
+  ).padStart(2, "0")}.${String(now.getMilliseconds()).padStart(3, "0")}`;
+  console.log(`${stamp} ${parts.join(" ")}`);
 }
 
 /**

@@ -15,6 +15,7 @@ import {
 import { env } from "../env";
 import { apiHandler, parseWith } from "../errors";
 import { checkDatabase, prisma } from "../prisma";
+import { getAIStatus } from "../services/ai";
 import { ensureDemoUser } from "../store";
 
 export const systemRouter = Router();
@@ -42,6 +43,10 @@ export function readToken(token: string): string | null {
 systemRouter.get(
   "/health",
   apiHandler(async (_req, res) => {
+    // The backend is the single source of truth for AI status: it knows which
+    // provider is configured and (for Ollama) probes localhost:11434 itself,
+    // so the browser never has to guess or touch a model endpoint.
+    const aiStatus = await getAIStatus();
     const body: HealthResponseDto = {
       status: "ok",
       version: env.version,
@@ -50,6 +55,8 @@ systemRouter.get(
       // Presence only - never the key. Lets the UI distinguish "AI connected"
       // from "AI configured without a key" without exposing the secret.
       aiKeyConfigured: env.openrouterApiKey.length > 0,
+      aiStatus: aiStatus.status,
+      aiError: aiStatus.status === "disconnected" ? aiStatus.detail : "",
       database: (await checkDatabase()) ? "connected" : "error",
       timestamp: new Date().toISOString(),
     };

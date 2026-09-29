@@ -2,8 +2,10 @@
  * The AI provider contract.
  *
  * Everything above this interface (prompts, schemas, pipeline steps) is
- * provider-agnostic; only `openrouter.ts` knows about HTTP. That keeps the
- * OpenRouter call in exactly one place instead of scattered across routes.
+ * provider-agnostic; only `openaiCompatible.ts` and its two subclasses know
+ * about HTTP. That keeps the network call in exactly one place instead of
+ * scattered across routes, and lets `AI_PROVIDER` swap OpenRouter for local
+ * Ollama without touching any caller.
  */
 
 export interface AIChatMessage {

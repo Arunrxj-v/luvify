@@ -137,9 +137,17 @@ export function requirementExtractionPrompt(
     "Leave any field you have no stated information for as an empty string or empty array.",
   ].join("\n");
 
+  // Compact transcript for a small local model: only the newest exchanges of
+  // THIS project, each bounded, so a long client paste cannot bloat every
+  // later request. Nothing from another project can appear here - `history`
+  // is loaded scoped to this conversation.
   const transcript = history
-    .slice(-12)
-    .map((entry) => `${entry.role === "user" ? "CLIENT" : "ASSISTANT"}: ${entry.content}`)
+    .slice(-10)
+    .map((entry) => {
+      const speaker = entry.role === "user" ? "CLIENT" : "ASSISTANT";
+      const text = entry.content.length > 600 ? `${entry.content.slice(0, 597)}...` : entry.content;
+      return `${speaker}: ${text}`;
+    })
     .join("\n");
 
   const user = [

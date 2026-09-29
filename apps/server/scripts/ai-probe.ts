@@ -1,18 +1,19 @@
 /**
  * Live AI probe: `npx tsx apps/server/scripts/ai-probe.ts`
  *
- * Sends one real request through the same `OpenRouterProvider` the API routes
- * use, then reports exactly what happened - status, model, token usage or the
- * classified failure kind. Used to verify the integration end to end instead of
- * assuming the wiring is correct.
+ * Sends one real request through the SAME provider factory the API routes use
+ * (`AI_PROVIDER` decides between OpenRouter and Ollama), then reports exactly
+ * what happened - status, model, token usage or the classified failure kind.
+ * Used to verify the integration end to end instead of assuming the wiring is
+ * correct.
  *
  * Never prints the API key.
  */
 
 import { readAIConfig, usesRealProvider } from "../src/services/ai/config";
 import { AIError } from "../src/services/ai/errors";
-import { OpenRouterProvider } from "../src/services/ai/openrouter";
 import { logAI } from "../src/services/ai/logger";
+import { getAIProvider } from "../src/services/ai";
 
 async function main(): Promise<void> {
   const config = readAIConfig();
@@ -32,7 +33,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const provider = new OpenRouterProvider(config);
+  const provider = getAIProvider();
   try {
     const result = await provider.complete({
       operation: "probe",

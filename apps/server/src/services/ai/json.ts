@@ -32,18 +32,82 @@ export interface StructuredResult<S extends ZodTypeAny> {
 }
 
 /**
- * Pulls the first JSON object out of a completion. Models frequently wrap JSON
- * in ``` fences or add a sentence before it; both are tolerated.
+ * Pulls the first usable JSON object out of a completion. Models frequently
+ * wrap JSON in ``` fences, prefix it with a sentence, or - like a local
+ * thinking model - reason in-band before answering; all are tolerated.
+ *
+ * Never throws: if nothing parses, the best candidate is returned unchanged so
+ * the caller reports "not parseable JSON" and the repair loop can react.
  */
 export function extractJsonObject(text: string): string {
   const trimmed = text.trim();
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const candidate = fenced?.[1]?.trim() ?? trimmed;
 
-  const start = candidate.indexOf("{");
-  const end = candidate.lastIndexOf("}");
-  if (start === -1 || end === -1 || end <= start) return candidate;
-  return candidate.slice(start, end + 1);
+  // Drop an in-band reasoning preamble ("... </think>" and friends): the answer
+  // is whatever came after it. Only applied when a closing tag exists, so a
+  // normal reply is never altered.
+  const closed = trimmed.lastIndexOf("</think>");
+  const answer =
+    closed === -1
+      ? trimmed
+      : trimmed
+          .slice(closed + "</think>".length)
+          .trim() || trimmed;
+
+  const fenced = answer.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidates = [fenced?.[1]?.trim(), answer].filter((entry): entry is string => Boolean(entry));
+
+  for (const candidate of candidates) {
+    const parsed = firstParseableObject(candidate);
+    if (parsed !== null) return parsed;
+  }
+
+  // Historical contract: hand back the raw candidate rather than nothing.
+  return candidates[0] ?? trimmed;
+}
+
+/** Balanced `{...}` slice for the first object in `text` that actually parses. */
+function firstParseableObject(text: string): string | null {
+  let from = 0;
+  // Bounded so adversarial/pathological output cannot make this quadratic.
+  for (let attempt = 0; attempt < 64; attempt += 1) {
+    const start = text.indexOf("{", from);
+    if (start === -1) return null;
+    const span = balancedSlice(text, start);
+    if (span !== null) {
+      try {
+        JSON.parse(span);
+        return span;
+      } catch {
+        // This brace opened something that is not valid JSON - keep scanning.
+      }
+    }
+    from = start + 1;
+  }
+  return null;
+}
+
+/** From `start`, walk to the matching `}` respecting strings and escapes. */
+function balancedSlice(text: string, start: number): string | null {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < text.length; i += 1) {
+    const char = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') inString = true;
+    else if (char === "{") depth += 1;
+    else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
 }
 
 /** One structured completion, with a single repair attempt on invalid output. */

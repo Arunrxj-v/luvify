@@ -1,5 +1,6 @@
 /**
- * The real, OpenRouter-powered generation pipeline.
+ * The real generation pipeline, driven by whichever provider `AI_PROVIDER`
+ * selects (OpenRouter or local Ollama).
  *
  *   requirements -> AI architecture -> specification -> skeleton document
  *     -> per-page AI copy -> AI content validation -> grounding validation

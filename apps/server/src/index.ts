@@ -14,7 +14,7 @@ import { env, envCandidatesHint, envFile } from "./env";
 import { errorHandler, notFoundHandler } from "./errors";
 import { prisma } from "./prisma";
 import { apiRouter } from "./routes";
-import { reportAIConfiguration } from "./services/ai";
+import { logAIStatus, reportAIConfiguration } from "./services/ai";
 
 export function createApp(): express.Express {
   const app = express();
@@ -63,9 +63,13 @@ const server = app.listen(env.port, () => {
       ? `[luvify] env file: ${envFile}`
       : `[luvify] env file: NOT FOUND - checked ${envCandidatesHint()}, using process environment only`,
   );
-  // Reports the provider/model and whether OPENROUTER_API_KEY is set, without
-  // ever printing the key itself.
+  // Reports the configured provider/model and whether its credentials are
+  // present, without ever printing a secret itself.
   reportAIConfiguration();
+  // Then proves the configured provider is actually reachable: for Ollama this
+  // is a real probe of localhost:11434 plus a check that the configured model
+  // is installed, so a misconfigured local setup is visible in one log line.
+  void logAIStatus();
 });
 
 server.on("error", (error: NodeJS.ErrnoException) => {

@@ -8,6 +8,7 @@
 import { env } from "../../env";
 import { readAIConfig, usesRealProvider } from "./config";
 import { AIError, aiToApiError } from "./errors";
+import { OllamaProvider } from "./ollama";
 import { OpenRouterProvider } from "./openrouter";
 import type { AIProvider } from "./provider";
 
@@ -22,6 +23,9 @@ export function aiIsEnabled(): boolean {
  * The configured provider. Throws `not_configured` when the offline fixture is
  * selected - there is no path where a missing/failed real provider degrades
  * into fabricated output.
+ *
+ * The provider is chosen purely from `AI_PROVIDER`, so switching between
+ * OpenRouter and Ollama is an `.env` edit - never a code change.
  */
 export function getAIProvider(): AIProvider {
   const config = readAIConfig();
@@ -29,15 +33,22 @@ export function getAIProvider(): AIProvider {
     throw new AIError(
       "not_configured",
       `The AI layer needs a real provider but AI_PROVIDER="${config.provider}". ` +
-        `Set AI_PROVIDER=openrouter to generate websites.`,
+        `Set AI_PROVIDER=openrouter or AI_PROVIDER=ollama to generate websites.`,
     );
   }
 
-  // Rebuild if the model or key presence changed, so config edits take effect.
-  const signature = `${config.provider}|${config.model}|${config.apiKey.length}`;
+  // Rebuild if the provider, model, endpoint or key presence changed, so
+  // config edits take effect without restarting the whole server.
+  const signature = [
+    config.provider,
+    config.model,
+    config.baseUrl,
+    config.apiKey.length,
+    config.reasoningEffort ?? "",
+  ].join("|");
   if (cached && cached.signature === signature) return cached.provider;
 
-  const provider = new OpenRouterProvider(config);
+  const provider = config.provider === "ollama" ? new OllamaProvider(config) : new OpenRouterProvider(config);
   cached = { provider, signature };
   return provider;
 }
@@ -50,6 +61,10 @@ export { generateSiteWithAI } from "./generation";
 export type { AIPipelineInput, AIPipelineResult } from "./generation";
 export { extractRequirements, planArchitecture, generatePageCopy, validatePageCopy, composeChatReply } from "./operations";
 export type { AIProjectContext } from "./operations";
+export { getAIStatus, logAIStatus } from "./status";
+export type { AIStatus } from "./status";
+export { OllamaProvider } from "./ollama";
+export { OpenRouterProvider } from "./openrouter";
 export type { AIProvider } from "./provider";
 export type { ArchitecturePlan, ContentValidation, PageCopy, RequirementUpdate } from "./schemas";
 

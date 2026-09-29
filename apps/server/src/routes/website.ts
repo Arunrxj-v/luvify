@@ -94,9 +94,10 @@ websiteRouter.post(
     // current requirements rather than a stale snapshot.
     const requirements = await syncDerivedRequirements(project.id, requirementsOf(project));
 
-    // REAL AI PATH. OpenRouter decides the architecture and writes every page.
-    // Any provider failure is translated into a specific API error and returned
-    // to the client - generation never falls back to fabricated content.
+    // REAL AI PATH. The configured provider (OpenRouter or local Ollama)
+    // decides the architecture and writes every page. Any provider failure is
+    // translated into a specific API error and returned to the client -
+    // generation never falls back to fabricated content.
     if (aiIsEnabled()) {
       const specificationVersion = (project.specification?.version ?? 0) + 1;
       const versionNumber = await nextVersionNumber(project.id);
@@ -254,7 +255,7 @@ websiteRouter.post(
     });
 
     // REAL AI PATH: the change request is applied by regenerating page content
-    // through OpenRouter from the corrected requirements.
+    // through the configured provider from the corrected requirements.
     if (aiIsEnabled()) {
       const generated = await runAI(() =>
         generateSiteWithAI(getAIProvider(), {

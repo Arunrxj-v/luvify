@@ -88,24 +88,27 @@ export function isRetryable(error: unknown): boolean {
 /**
  * Classifies an HTTP response from the provider into the failure taxonomy.
  * OpenRouter and OpenAI-compatible gateways both report `error.message`.
+ *
+ * `label` names the provider in the human-readable message (defaults to
+ * "OpenRouter", which keeps the original wording for that provider).
  */
-export function classifyHttpFailure(status: number, body: string): AIError {
+export function classifyHttpFailure(status: number, body: string, label = "OpenRouter"): AIError {
   const message = extractProviderMessage(body);
 
   if (status === 401 || status === 403) {
-    return new AIError("invalid_api_key", `OpenRouter rejected the API key (HTTP ${status}). ${message}`.trim(), {
+    return new AIError("invalid_api_key", `${label} rejected the API key (HTTP ${status}). ${message}`.trim(), {
       upstreamStatus: status,
     });
   }
   if (status === 402) {
     return new AIError(
       "insufficient_credits",
-      `OpenRouter account has insufficient credits (HTTP 402). ${message}`.trim(),
+      `${label} account has insufficient credits (HTTP 402). ${message}`.trim(),
       { upstreamStatus: status },
     );
   }
   if (status === 429) {
-    return new AIError("rate_limited", `OpenRouter rate limit reached (HTTP 429). ${message}`.trim(), {
+    return new AIError("rate_limited", `${label} rate limit reached (HTTP 429). ${message}`.trim(), {
       upstreamStatus: status,
       retryable: true,
     });
@@ -113,23 +116,26 @@ export function classifyHttpFailure(status: number, body: string): AIError {
   if (status === 404) {
     return new AIError(
       "model_unavailable",
-      `The configured model was not found on OpenRouter (HTTP 404). ${message}`.trim(),
+      `The configured model was not found on ${label} (HTTP 404). ${message}`.trim(),
       { upstreamStatus: status },
     );
   }
   if (status >= 500) {
-    return new AIError("provider_error", `OpenRouter returned HTTP ${status}. ${message}`.trim(), {
+    return new AIError("provider_error", `${label} returned HTTP ${status}. ${message}`.trim(), {
       upstreamStatus: status,
       retryable: true,
     });
   }
-  return new AIError("provider_error", `OpenRouter returned HTTP ${status}. ${message}`.trim(), {
+  return new AIError("provider_error", `${label} returned HTTP ${status}. ${message}`.trim(), {
     upstreamStatus: status,
   });
 }
 
-/** Pulls `error.message` out of an OpenAI-compatible error body without throwing. */
-function extractProviderMessage(body: string): string {
+/**
+ * Pulls `error.message` out of an OpenAI-compatible error body without throwing.
+ * Exported so a provider can build a more specific message for the same body.
+ */
+export function extractProviderMessage(body: string): string {
   if (!body) return "";
   try {
     const parsed = JSON.parse(body) as { error?: { message?: unknown } | string };

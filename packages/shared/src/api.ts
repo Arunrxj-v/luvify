@@ -289,6 +289,14 @@ export interface HealthResponseDto {
    * browser can show "connected" without ever receiving the secret.
    */
   aiKeyConfigured: boolean;
+  /**
+   * Whether the configured provider is usable, as determined by the BACKEND
+   * (for Ollama: a real probe of localhost:11434 plus a model-installed check).
+   * The frontend renders this verbatim instead of guessing.
+   */
+  aiStatus: "connected" | "disconnected";
+  /** Why the AI is disconnected - UI-safe text, empty when connected. */
+  aiError: string;
   database: "connected" | "error";
   timestamp: string;
 }

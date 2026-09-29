@@ -32,6 +32,13 @@ const initialDraft: CreateProjectRequest = {
   websiteType: "business",
 };
 
+/** Display names for the providers the API can report in `aiProvider`. */
+const AI_PROVIDER_LABELS: Record<string, string> = {
+  ollama: "Ollama",
+  openrouter: "OpenRouter",
+  mock: "Mock",
+};
+
 /** Remembers the open project so a page refresh resumes the conversation. */
 const SAVED_PROJECT_KEY = "luvify.project";
 
@@ -331,13 +338,17 @@ export function App(): JSX.Element {
         <div className="topbar-meta">
           <span
             className={
-              health?.database === "connected" && health.aiKeyConfigured ? "pill ok" : "pill warn"
+              health?.database === "connected" && health.aiStatus === "connected" ? "pill ok" : "pill warn"
             }
+            // The backend decides AI status; this only renders its answer.
+            title={health && health.aiStatus === "disconnected" ? health.aiError : undefined}
           >
             {health
-              ? `API ${health.database} · AI ${health.aiProvider}${
-                  health.aiProvider === "openrouter" ? (health.aiKeyConfigured ? " ✓" : " · key missing") : ""
-                }`
+              ? health.aiStatus === "connected"
+                ? `API ${health.database} · AI ${health.aiProvider}${
+                    health.aiProvider === "openrouter" && health.aiKeyConfigured ? " ✓" : ""
+                  }`
+                : `API ${health.database} · AI disconnected · ${AI_PROVIDER_LABELS[health.aiProvider] ?? health.aiProvider}`
               : "connecting..."}
           </span>
           {project?.deploymentUrl ? (
