@@ -8,6 +8,7 @@
 import { env } from "../../env";
 import { readAIConfig, usesRealProvider } from "./config";
 import { AIError, aiToApiError } from "./errors";
+import { GeminiProvider } from "./gemini";
 import { OpenRouterProvider } from "./openrouter";
 import type { AIProvider } from "./provider";
 
@@ -29,15 +30,16 @@ export function getAIProvider(): AIProvider {
     throw new AIError(
       "not_configured",
       `The AI layer needs a real provider but AI_PROVIDER="${config.provider}". ` +
-        `Set AI_PROVIDER=openrouter to generate websites.`,
+        `Set AI_PROVIDER=gemini (or AI_PROVIDER=openrouter) to generate websites.`,
     );
   }
 
-  // Rebuild if the model or key presence changed, so config edits take effect.
-  const signature = `${config.provider}|${config.model}|${config.apiKey.length}`;
+  // Rebuild if the model, fallback model or key presence changed, so config edits take effect.
+  const signature = `${config.provider}|${config.model}|${config.fallbackModel ?? ""}|${config.apiKey.length}`;
   if (cached && cached.signature === signature) return cached.provider;
 
-  const provider = new OpenRouterProvider(config);
+  const provider =
+    config.provider === "gemini" ? new GeminiProvider(config) : new OpenRouterProvider(config);
   cached = { provider, signature };
   return provider;
 }

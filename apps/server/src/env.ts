@@ -66,22 +66,42 @@ export function envCandidatesHint(): string {
 const str = (value: string | undefined, fallback: string): string =>
   value && value.trim() ? value.trim() : fallback;
 
-/** Parses a non-negative number, falling back when unset or malformed. */
+/**
+ * Parses a non-negative number, falling back when unset or malformed.
+ *
+ * An unset or blank value must reach the fallback: `Number("")` is `0`, which
+ * would otherwise silently disable timeouts and retries.
+ */
 const num = (value: string | undefined, fallback: number): number => {
-  const parsed = Number(str(value, ""));
+  const raw = str(value, "");
+  if (!raw) return fallback;
+  const parsed = Number(raw);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 };
 
 /**
  * The AI provider actually used for generation.
  *
- * `openrouter` is the production provider. `mock` is an explicitly-selected
- * offline fixture used by the test suite; it is never chosen automatically, so
- * a provider outage can never silently produce a fabricated website.
+ * `gemini` (Google Gemini) is the production provider, `openrouter` remains a
+ * supported alternative. `mock` is an explicitly-selected offline fixture used
+ * by the test suite; it is never chosen automatically, so a provider outage can
+ * never silently produce a fabricated website.
  */
-const aiProvider = str(process.env.AI_PROVIDER, "openrouter").toLowerCase();
+const aiProvider = str(process.env.AI_PROVIDER, "gemini").toLowerCase();
 
 const openrouterModel = str(process.env.OPENROUTER_MODEL, "openai/gpt-4o-mini");
+
+/** Google Gemini - read here and nowhere else, never logged, never prefixed `VITE_`. */
+const geminiApiKey = str(process.env.GOOGLE_GENERATIVE_AI_API_KEY, "");
+/** Primary model. Gemini 3.8 Flash stays the default; a fallback runs one extra cycle (see GEMINI_FALLBACK_MODEL). */
+const geminiModel = str(process.env.GEMINI_MODEL, "gemini-3.8-flash");
+/**
+ * Optional fallback model for one extra retry cycle after the primary model
+ * exhausts its retries on a transient failure (429 / 5xx / network). Empty
+ * disables the fallback entirely. Non-transient failures (auth, bad request,
+ * missing key) never reach it.
+ */
+const geminiFallbackModel = str(process.env.GEMINI_FALLBACK_MODEL, "gemini-3.5-flash-lite");
 
 export const env = {
   nodeEnv: str(process.env.NODE_ENV, "development"),
@@ -94,10 +114,22 @@ export const env = {
   storageDir: path.resolve(repoRoot, str(process.env.STORAGE_DIR, ".storage")),
   aiProvider,
   /** Model label reported to the UI; the mock provider has no real model. */
-  aiModel: aiProvider === "openrouter" ? openrouterModel : "mock",
+  aiModel:
+    aiProvider === "gemini"
+      ? geminiModel
+      : aiProvider === "openrouter"
+        ? openrouterModel
+        : "mock",
   /** Shared generation tuning. */
   aiTemperature: num(process.env.AI_TEMPERATURE, 0.6),
   aiMaxTokens: num(process.env.AI_MAX_TOKENS, 4096),
+  /** Google Gemini - the key is read here and nowhere else, and never logged. */
+  geminiApiKey,
+  geminiModel,
+  geminiFallbackModel,
+  geminiBaseUrl: str(process.env.GEMINI_BASE_URL, "https://generativelanguage.googleapis.com"),
+  geminiTimeoutMs: num(process.env.GEMINI_TIMEOUT_MS, num(process.env.AI_REQUEST_TIMEOUT_MS, 60_000)),
+  geminiMaxRetries: num(process.env.GEMINI_MAX_RETRIES, num(process.env.AI_MAX_RETRIES, 2)),
   /** OpenRouter - the key is read here and nowhere else, and never logged. */
   openrouterApiKey: str(process.env.OPENROUTER_API_KEY, ""),
   openrouterModel,

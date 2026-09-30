@@ -2,8 +2,9 @@
  * The AI provider contract.
  *
  * Everything above this interface (prompts, schemas, pipeline steps) is
- * provider-agnostic; only `openrouter.ts` knows about HTTP. That keeps the
- * OpenRouter call in exactly one place instead of scattered across routes.
+ * provider-agnostic; only `openrouter.ts` and `gemini.ts` know about transport.
+ * That keeps each provider call in exactly one place instead of scattered
+ * across routes.
  */
 
 export interface AIChatMessage {

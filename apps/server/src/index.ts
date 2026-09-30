@@ -63,8 +63,8 @@ const server = app.listen(env.port, () => {
       ? `[luvify] env file: ${envFile}`
       : `[luvify] env file: NOT FOUND - checked ${envCandidatesHint()}, using process environment only`,
   );
-  // Reports the provider/model and whether OPENROUTER_API_KEY is set, without
-  // ever printing the key itself.
+  // Reports the provider/model and whether the active provider's API key is
+  // set, without ever printing the key itself.
   reportAIConfiguration();
 });
 
