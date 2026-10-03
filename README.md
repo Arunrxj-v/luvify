@@ -1,41 +1,30 @@
 # Luvify
 
-> AI-powered website builder that turns business requirements into complete, customizable websites.
+> AI-powered website builder that transforms natural-language business requirements into complete, customizable websites.
 
-Luvify is an AI-powered website creation platform designed for people who want a professional website without needing to understand web development, design systems, hosting, or deployment.
+Luvify is an AI-powered website creation platform designed for users who want to build professional websites without needing technical knowledge.
 
-Users describe their business and requirements in natural language, and Luvify transforms those requirements into a structured website with an appropriate architecture, pages, content, and design.
+Users describe their business and requirements in natural language. Luvify understands those requirements, determines the appropriate website architecture, generates the required pages and content, and renders the resulting website.
 
 ---
 
 ## 🚀 Vision
 
-Building a website traditionally requires:
-
-- Understanding web technologies
-- Choosing a framework
-- Designing pages
-- Writing content
-- Implementing responsive layouts
-- Building forms and backend functionality
-- Setting up hosting
-- Managing deployments
-
-Luvify aims to simplify this entire process.
-
-The long-term goal is:
+Luvify aims to make creating and launching a business website as simple as describing what the business needs.
 
 ```text
-Business idea
-      ↓
-Natural language requirements
-      ↓
-Luvify AI
-      ↓
-Website
-      ↓
-Publish
-      ↓
-Hosted website
-      ↓
-Business receives leads, messages, bookings, etc.
+Business Requirements
+        ↓
+      Luvify
+        ↓
+   AI Understanding
+        ↓
+ Website Architecture
+        ↓
+   Page Generation
+        ↓
+ Website Preview
+        ↓
+      Publish
+        ↓
+ Hosted Website
