@@ -44,6 +44,7 @@ import {
   type ProjectSummaryDto,
   type Requirements,
   type SiteDocument,
+  type UserDto,
   type VersionDto,
   type WebsiteFileDto,
 } from "@luvify/shared";
@@ -78,8 +79,14 @@ export function parseJson(value: string | null | undefined): unknown {
 
 // --- loaders ----------------------------------------------------------------
 
-export async function loadProject(id: string): Promise<ProjectWithRelations> {
-  const project = await prisma.project.findUnique({ where: { id }, include: projectInclude });
+export async function loadProject(id: string, userId: string): Promise<ProjectWithRelations> {
+  // Ownership is enforced in the query itself, not in a follow-up `if`: a
+  // project that belongs to somebody else is indistinguishable from one that
+  // does not exist, so probing ids can never confirm a guess.
+  const project = await prisma.project.findFirst({
+    where: { id, userId },
+    include: projectInclude,
+  });
   if (!project) throw ApiError.notFound(`Project "${id}" was not found`);
   return project;
 }
@@ -369,7 +376,25 @@ export function toProjectDetail(project: ProjectWithRelations): ProjectDetailDto
   };
 }
 
-export async function projectDetail(id: string): Promise<ProjectDetailDto> {
-  return toProjectDetail(await loadProject(id));
+export async function projectDetail(id: string, userId: string): Promise<ProjectDetailDto> {
+  return toProjectDetail(await loadProject(id, userId));
+}
+
+/**
+ * The only shape of a user that ever leaves the server.
+ *
+ * `passwordHash` and `googleId` are not merely omitted here - they are absent
+ * from every DTO in `@luvify/shared`, so there is no typed path from a Prisma
+ * row to a response body that could carry them.
+ */
+export function toUserDto(user: User): UserDto {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    avatarUrl: user.avatarUrl,
+    role: user.role,
+    createdAt: (user.createdAt as Date).toISOString(),
+  };
 }
 

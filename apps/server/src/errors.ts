@@ -24,12 +24,32 @@ export class ApiError extends Error {
     return new ApiError(400, "bad_request", message, details);
   }
 
+  /** Required authentication is missing, expired or invalid (401). */
+  static unauthorized(message = "Authentication required", code = "unauthorized"): ApiError {
+    return new ApiError(401, code, message);
+  }
+
+  /**
+   * Authenticated, but not allowed to act on this resource (403).
+   *
+   * Project routes deliberately prefer `notFound` instead: a 403 confirms that
+   * an id exists, which is exactly the enumeration this API must not provide.
+   */
+  static forbidden(message = "You do not have access to this resource"): ApiError {
+    return new ApiError(403, "forbidden", message);
+  }
+
   static notFound(message = "Resource not found"): ApiError {
     return new ApiError(404, "not_found", message);
   }
 
-  static conflict(message: string): ApiError {
-    return new ApiError(409, "conflict", message);
+  static conflict(message: string, code = "conflict"): ApiError {
+    return new ApiError(409, code, message);
+  }
+
+  /** Configuration problem on the server (503) - e.g. OAuth not set up. */
+  static unavailable(message: string, code = "not_configured"): ApiError {
+    return new ApiError(503, code, message);
   }
 }
 

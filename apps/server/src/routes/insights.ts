@@ -16,6 +16,7 @@ import {
   type AnalyzeRequirementsResponseDto,
   type GenerateSpecificationResponseDto,
 } from "@luvify/shared";
+import { currentUserId } from "../auth/middleware";
 import { apiHandler, parseWith } from "../errors";
 import { env } from "../env";
 import { buildSpecification, refreshDerivedFields } from "../generate";
@@ -34,7 +35,7 @@ const AnalyzeRequestSchema = z.object({
 projectInsightsRouter.get(
   "/:id/requirements",
   apiHandler(async (req, res) => {
-    const project = await loadProject(req.params.id ?? "");
+    const project = await loadProject(req.params.id ?? "", currentUserId(req));
     const requirements = requirementsOf(project);
     res.json({ requirements, completeness: toCompletenessDto(computeCompleteness(requirements)) });
   }),
@@ -43,7 +44,7 @@ projectInsightsRouter.get(
 projectInsightsRouter.put(
   "/:id/requirements",
   apiHandler(async (req, res) => {
-    const project = await loadProject(req.params.id ?? "");
+    const project = await loadProject(req.params.id ?? "", currentUserId(req));
     const patch = parseWith(z.record(z.string(), z.unknown()), req.body, "Requirements patch");
     const merged = mergeRequirements(requirementsOf(project), patch as Parameters<typeof mergeRequirements>[1]);
     const parsed = RequirementsSchema.parse(merged);
@@ -69,7 +70,7 @@ projectInsightsRouter.put(
 projectInsightsRouter.post(
   "/:id/requirements/analyze",
   apiHandler(async (req, res) => {
-    const project = await loadProject(req.params.id ?? "");
+    const project = await loadProject(req.params.id ?? "", currentUserId(req));
     const input = parseWith(AnalyzeRequestSchema, req.body, "Analyze request");
     const current = requirementsOf(project);
 
@@ -105,7 +106,7 @@ projectInsightsRouter.post(
 projectInsightsRouter.get(
   "/:id/specification",
   apiHandler(async (req, res) => {
-    const project = await loadProject(req.params.id ?? "");
+    const project = await loadProject(req.params.id ?? "", currentUserId(req));
     const specification = project.specification
       ? JSON.parse(project.specification.data) as Parameters<typeof summarizeSpecification>[0]
       : null;
@@ -120,7 +121,7 @@ projectInsightsRouter.get(
 projectInsightsRouter.post(
   "/:id/specification/generate",
   apiHandler(async (req, res) => {
-    const project = await loadProject(req.params.id ?? "");
+    const project = await loadProject(req.params.id ?? "", currentUserId(req));
     const requirements = requirementsOf(project);
     const version = (project.specification?.version ?? 0) + 1;
     const specification = buildSpecification({

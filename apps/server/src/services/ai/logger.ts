@@ -61,6 +61,7 @@ export function logAI(event: string, fields: AILogFields): void {
 export function logAIConfig(input: {
   provider: string;
   model: string;
+  fallbackModel?: string | undefined;
   baseUrl: string;
   apiKeyPresent: boolean;
   timeoutMs: number;
@@ -69,5 +70,6 @@ export function logAIConfig(input: {
   console.log(`[AI] provider=${input.provider}`);
   console.log(`[AI] api key configured=${input.apiKeyPresent}`);
   console.log(`[AI] model=${input.model}`);
+  if (input.fallbackModel) console.log(`[AI] fallback model=${input.fallbackModel}`);
   console.log(`[AI] baseUrl=${input.baseUrl} timeoutMs=${input.timeoutMs} maxRetries=${input.maxRetries}`);
 }

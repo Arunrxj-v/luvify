@@ -13,6 +13,7 @@ import {
   UpsertProductRequestSchema,
   slugify,
 } from "@luvify/shared";
+import { currentUserId } from "../auth/middleware";
 import { ApiError, apiHandler, parseWith } from "../errors";
 import { prisma } from "../prisma";
 import {
@@ -30,7 +31,7 @@ export const businessRouter = Router({ mergeParams: true });
 businessRouter.get(
   "/:id/business",
   apiHandler(async (req, res) => {
-    const project = await loadProject(req.params.id ?? "");
+    const project = await loadProject(req.params.id ?? "", currentUserId(req));
     res.json(project.businessProfile ? toBusinessProfileDto(project.businessProfile) : null);
   }),
 );
@@ -38,7 +39,7 @@ businessRouter.get(
 businessRouter.put(
   "/:id/business",
   apiHandler(async (req, res) => {
-    const project = await loadProject(req.params.id ?? "");
+    const project = await loadProject(req.params.id ?? "", currentUserId(req));
     const input = parseWith(UpdateBusinessProfileRequestSchema, req.body, "Business profile");
     const existing = project.businessProfile;
     const pick = <T>(value: T | undefined, fallback: T | null): T | null => (value !== undefined ? value : fallback);
@@ -85,7 +86,7 @@ async function uniqueProductSlug(projectId: string, name: string): Promise<strin
 businessRouter.get(
   "/:id/products",
   apiHandler(async (req, res) => {
-    const project = await loadProject(req.params.id ?? "");
+    const project = await loadProject(req.params.id ?? "", currentUserId(req));
     const products = await prisma.product.findMany({ where: { projectId: project.id }, orderBy: { createdAt: "desc" } });
     res.json(products.map(toProductDto));
   }),
@@ -94,7 +95,7 @@ businessRouter.get(
 businessRouter.post(
   "/:id/products",
   apiHandler(async (req, res) => {
-    const project = await loadProject(req.params.id ?? "");
+    const project = await loadProject(req.params.id ?? "", currentUserId(req));
     const input = parseWith(UpsertProductRequestSchema, req.body, "Product");
     const product = await prisma.product.create({
       data: {
@@ -119,7 +120,7 @@ businessRouter.post(
 businessRouter.patch(
   "/:id/products/:productId",
   apiHandler(async (req, res) => {
-    const project = await loadProject(req.params.id ?? "");
+    const project = await loadProject(req.params.id ?? "", currentUserId(req));
     const input = parseWith(UpsertProductRequestSchema.partial(), req.body, "Product");
     const existing = await prisma.product.findFirst({
       where: { id: req.params.productId ?? "", projectId: project.id },
@@ -148,7 +149,7 @@ businessRouter.patch(
 businessRouter.delete(
   "/:id/products/:productId",
   apiHandler(async (req, res) => {
-    const project = await loadProject(req.params.id ?? "");
+    const project = await loadProject(req.params.id ?? "", currentUserId(req));
     const existing = await prisma.product.findFirst({
       where: { id: req.params.productId ?? "", projectId: project.id },
       select: { id: true },
@@ -162,7 +163,7 @@ businessRouter.delete(
 businessRouter.get(
   "/:id/customers",
   apiHandler(async (req, res) => {
-    const project = await loadProject(req.params.id ?? "");
+    const project = await loadProject(req.params.id ?? "", currentUserId(req));
     const customers = await prisma.customer.findMany({
       where: { projectId: project.id },
       orderBy: { createdAt: "desc" },
@@ -174,7 +175,7 @@ businessRouter.get(
 businessRouter.post(
   "/:id/customers",
   apiHandler(async (req, res) => {
-    const project = await loadProject(req.params.id ?? "");
+    const project = await loadProject(req.params.id ?? "", currentUserId(req));
     const input = parseWith(UpsertCustomerRequestSchema, req.body, "Customer");
     const customer = await prisma.customer.upsert({
       where: { projectId_email: { projectId: project.id, email: input.email } },
@@ -188,7 +189,7 @@ businessRouter.post(
 businessRouter.get(
   "/:id/orders",
   apiHandler(async (req, res) => {
-    const project = await loadProject(req.params.id ?? "");
+    const project = await loadProject(req.params.id ?? "", currentUserId(req));
     const orders = await prisma.order.findMany({
       where: { projectId: project.id },
       include: { customer: true, items: true },
@@ -201,7 +202,7 @@ businessRouter.get(
 businessRouter.post(
   "/:id/orders",
   apiHandler(async (req, res) => {
-    const project = await loadProject(req.params.id ?? "");
+    const project = await loadProject(req.params.id ?? "", currentUserId(req));
     const input = parseWith(CreateOrderRequestSchema, req.body, "Order");
     const customer = await prisma.customer.upsert({
       where: { projectId_email: { projectId: project.id, email: input.customer.email } },
@@ -239,7 +240,7 @@ businessRouter.post(
 businessRouter.patch(
   "/:id/orders/:orderId/status",
   apiHandler(async (req, res) => {
-    const project = await loadProject(req.params.id ?? "");
+    const project = await loadProject(req.params.id ?? "", currentUserId(req));
     const input = parseWith(UpdateOrderStatusRequestSchema, req.body, "Order status");
     const existing = await prisma.order.findFirst({
       where: { id: req.params.orderId ?? "", projectId: project.id },
@@ -258,7 +259,7 @@ businessRouter.patch(
 businessRouter.get(
   "/:id/domains",
   apiHandler(async (req, res) => {
-    const project = await loadProject(req.params.id ?? "");
+    const project = await loadProject(req.params.id ?? "", currentUserId(req));
     res.json(project.domains.map(toDomainDto));
   }),
 );
@@ -266,7 +267,7 @@ businessRouter.get(
 businessRouter.post(
   "/:id/domains",
   apiHandler(async (req, res) => {
-    const project = await loadProject(req.params.id ?? "");
+    const project = await loadProject(req.params.id ?? "", currentUserId(req));
     const input = parseWith(AddDomainRequestSchema, req.body, "Domain");
     const hostname = input.hostname.toLowerCase();
     const clash = await prisma.domain.findUnique({ where: { hostname }, select: { id: true } });
@@ -292,7 +293,7 @@ businessRouter.post(
 businessRouter.delete(
   "/:id/domains/:domainId",
   apiHandler(async (req, res) => {
-    const project = await loadProject(req.params.id ?? "");
+    const project = await loadProject(req.params.id ?? "", currentUserId(req));
     const existing = await prisma.domain.findFirst({
       where: { id: req.params.domainId ?? "", projectId: project.id },
       select: { id: true },

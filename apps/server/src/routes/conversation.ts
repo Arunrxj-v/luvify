@@ -22,6 +22,7 @@ import {
   type ChatResponseDto,
   type MessagePayload,
 } from "@luvify/shared";
+import { currentUserId } from "../auth/middleware";
 import { apiHandler, parseWith } from "../errors";
 import { env } from "../env";
 import { archetypeFor, pagePlanFor } from "../generate";
@@ -62,7 +63,7 @@ async function recentMessages(conversationId: string, projectId: string) {
 conversationRouter.get(
   "/:id/conversation",
   apiHandler(async (req, res) => {
-    const project = await loadProject(req.params.id ?? "");
+    const project = await loadProject(req.params.id ?? "", currentUserId(req));
     const conversation = await ensureConversation(project.id, "REQUIREMENTS", "Requirements");
     const requirements = requirementsOf(project);
     const report = computeCompleteness(requirements);
@@ -275,8 +276,8 @@ interface ChatInput {
 }
 
 /** Shared brain for `POST /chat` and `POST /messages`. */
-async function runChat(projectId: string, input: ChatInput): Promise<ChatResponseDto> {
-  const project = await loadProject(projectId);
+async function runChat(projectId: string, userId: string, input: ChatInput): Promise<ChatResponseDto> {
+  const project = await loadProject(projectId, userId);
   const conversation = await ensureConversation(project.id, "REQUIREMENTS", "Requirements");
   const existing = await recentMessages(conversation.id, project.id);
 
@@ -463,7 +464,7 @@ conversationRouter.post(
   "/:id/chat",
   apiHandler(async (req, res) => {
     const input = parseWith(ChatRequestSchema, req.body, "Chat request");
-    res.json(await runChat(req.params.id ?? "", input));
+    res.json(await runChat(req.params.id ?? "", currentUserId(req), input));
   }),
 );
 
@@ -472,6 +473,6 @@ conversationRouter.post(
   apiHandler(async (req, res) => {
     const input = parseWith(PostMessageRequestSchema, req.body, "Message request");
     // The message DTO carries the text as `content`; `runChat` consumes `message`.
-    res.json(await runChat(req.params.id ?? "", { ...input, message: input.content }));
+    res.json(await runChat(req.params.id ?? "", currentUserId(req), { ...input, message: input.content }));
   }),
 );

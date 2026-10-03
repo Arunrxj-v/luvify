@@ -1,17 +1,18 @@
 /**
- * Live AI probe: `npx tsx apps/server/scripts/ai-probe.ts`
+ * Live AI probe: `npm run ai:probe`
  *
- * Sends one real request through the same `OpenRouterProvider` the API routes
- * use, then reports exactly what happened - status, model, token usage or the
- * classified failure kind. Used to verify the integration end to end instead of
- * assuming the wiring is correct.
+ * Sends one real request through the same provider the API routes use
+ * (GeminiProvider for AI_PROVIDER=gemini, OpenRouterProvider otherwise), then
+ * reports exactly what happened - status, model, token usage or the classified
+ * failure kind. Used to verify the integration end to end instead of assuming
+ * the wiring is correct.
  *
  * Never prints the API key.
  */
 
 import { readAIConfig, usesRealProvider } from "../src/services/ai/config";
 import { AIError } from "../src/services/ai/errors";
-import { OpenRouterProvider } from "../src/services/ai/openrouter";
+import { getAIProvider } from "../src/services/ai";
 import { logAI } from "../src/services/ai/logger";
 
 async function main(): Promise<void> {
@@ -21,6 +22,7 @@ async function main(): Promise<void> {
     operation: "probe",
     provider: config.provider,
     model: config.model,
+    fallbackModel: config.fallbackModel,
     baseUrl: config.baseUrl,
     apiKeyPresent: config.apiKey.length > 0,
     timeoutMs: config.timeoutMs,
@@ -32,7 +34,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const provider = new OpenRouterProvider(config);
+  const provider = getAIProvider();
   try {
     const result = await provider.complete({
       operation: "probe",
