@@ -119,8 +119,12 @@ export function AuthScreens(): JSX.Element {
             {mode === "signup" ? <span className="field-hint">{PASSWORD_HINT}</span> : null}
           </label>
 
-          <button className="btn primary auth-submit" type="submit" disabled={pending}>
-            {pending ? "Please wait..." : mode === "login" ? "Sign in" : "Create account"}
+          <button
+            className={"btn ink auth-submit" + (pending ? " is-loading" : "")}
+            type="submit"
+            disabled={pending}
+          >
+            {mode === "login" ? "Sign in" : "Create account"}
           </button>
         </form>
 
