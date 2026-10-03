@@ -23,16 +23,46 @@ datasource db {
 // ---------------------------------------------------------------------------
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String
-  avatarUrl String?
+  id           String   @id @default(cuid())
+  /// Normalized (lower-case) unique login identifier.
+  email        String   @unique
+  name         String
+  /// scrypt hash (`scrypt$N$r$p$salt$hash`). Null for accounts that only ever
+  /// signed in through Google. NEVER returned by any API response.
+  passwordHash String?
+  /// Google subject ("sub") - stable per Google account, unique. Null when the
+  /// account was created with email/password only.
+  googleId     String?  @unique
+  avatarUrl    String?
   /// OWNER | ADMIN | DEMO
-  role      String   @default("OWNER")
+  role         String   @default("OWNER")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  projects Project[]
+  sessions Session[]
+}
+
+/// Server-side authentication session. The browser only ever holds an opaque
+/// random token in an httpOnly cookie; the SHA-256 of that token is what is
+/// stored here, so a database leak never yields usable session cookies.
+/// Deleting the row logs the user out immediately.
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  /// SHA-256 (hex) of the opaque cookie token - unique indexed for O(1) lookup.
+  tokenHash String   @unique
+  expiresAt DateTime
+  /// Best-effort audit fields. Never used for authorization decisions.
+  userAgent String?
+  ip        String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  projects Project[]
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 // ---------------------------------------------------------------------------
@@ -40,24 +70,24 @@ model User {
 // ---------------------------------------------------------------------------
 
 model Project {
-  id                  String  @id @default(cuid())
+  id                  String    @id @default(cuid())
   userId              String
   /// Display name of the website/project
   name                String
-  slug                String  @unique
+  slug                String    @unique
   businessName        String
   businessDescription String
   /// WebsiteType from @luvify/shared
   websiteType         String
   templateId          String?
   /// ProjectStatus: DISCOVERY | REQUIREMENTS_READY | GENERATING | DRAFT | PUBLISHED
-  status              String  @default("DISCOVERY")
+  status              String    @default("DISCOVERY")
   /// Optional externally hosted thumbnail; the UI otherwise derives a swatch
   thumbnailUrl        String?
   currentVersionId    String?
   publishedAt         DateTime?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   user            User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   conversations   Conversation[]
@@ -112,22 +142,21 @@ model Message {
   @@index([conversationId, createdAt])
 }
 
-
 // ---------------------------------------------------------------------------
 // AI artifacts
 // ---------------------------------------------------------------------------
 
 model Requirement {
-  id             String   @id @default(cuid())
-  projectId      String   @unique
+  id             String    @id @default(cuid())
+  projectId      String    @unique
   /// JSON encoded Requirements tree
   data           String
-  completeness   Int      @default(0)
+  completeness   Int       @default(0)
   /// JSON encoded completeness breakdown per category
   breakdown      String?
   lastAnalyzedAt DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
@@ -222,7 +251,6 @@ model ProjectActivity {
 
   @@index([projectId, createdAt])
 }
-
 
 // ---------------------------------------------------------------------------
 // Shopify-like business layer (foundation for products / orders / customers /

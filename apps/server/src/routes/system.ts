@@ -1,43 +1,17 @@
 /**
- * System routes: health, the demo login and the template gallery.
+ * System routes: health and the template gallery.
+ *
+ * Authentication lives in `./auth` (see `routes/index.ts`); this module only
+ * exposes endpoints that are safe for an anonymous caller.
  */
 
-import { createHmac } from "node:crypto";
 import { Router } from "express";
-import {
-  DemoLoginRequestSchema,
-  SITE_TEMPLATES,
-  createSiteFromTemplate,
-  type AuthResponseDto,
-  type HealthResponseDto,
-  type TemplateDto,
-} from "@luvify/shared";
+import { SITE_TEMPLATES, createSiteFromTemplate, type HealthResponseDto, type TemplateDto } from "@luvify/shared";
 import { env } from "../env";
-import { apiHandler, parseWith } from "../errors";
-import { checkDatabase, prisma } from "../prisma";
-import { ensureDemoUser } from "../store";
+import { apiHandler } from "../errors";
+import { checkDatabase } from "../prisma";
 
 export const systemRouter = Router();
-
-function sign(payload: string): string {
-  return createHmac("sha256", env.jwtSecret).update(payload).digest("base64url");
-}
-
-/** Stateless demo token: `<base64 payload>.<hmac>` - enough for local sessions. */
-export function createToken(userId: string): string {
-  const payload = Buffer.from(JSON.stringify({ sub: userId, exp: Date.now() + 7 * 24 * 60 * 60 * 1000 })).toString(
-    "base64url",
-  );
-  return `${payload}.${sign(payload)}`;
-}
-
-export function readToken(token: string): string | null {
-  const [payload, signature] = token.split(".");
-  if (!payload || !signature) return null;
-  const expected = sign(payload);
-  if (expected.length !== signature.length) return null;
-  return payload;
-}
 
 systemRouter.get(
   "/health",
@@ -54,34 +28,6 @@ systemRouter.get(
         (env.aiProvider === "gemini" ? env.geminiApiKey : env.openrouterApiKey).length > 0,
       database: (await checkDatabase()) ? "connected" : "error",
       timestamp: new Date().toISOString(),
-    };
-    res.json(body);
-  }),
-);
-
-systemRouter.post(
-  "/auth/demo-login",
-  apiHandler(async (req, res) => {
-    const input = parseWith(DemoLoginRequestSchema, req.body);
-    const base = await ensureDemoUser();
-    const user =
-      input.name || input.email
-        ? await prisma.user.update({
-            where: { id: base.id },
-            data: { ...(input.name ? { name: input.name } : {}), ...(input.email ? { email: input.email } : {}) },
-          })
-        : base;
-    const body: AuthResponseDto = {
-      token: createToken(user.id),
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        avatarUrl: user.avatarUrl,
-        role: user.role,
-        createdAt: (user.createdAt as Date).toISOString(),
-      },
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
     };
     res.json(body);
   }),

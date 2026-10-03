@@ -1,7 +1,12 @@
 /**
  * End-to-end smoke test against a *running* server (`npm run e2e`):
- * health -> templates -> create project -> chat -> specification -> generate ->
- * preview -> export -> publish -> versions. Exits non-zero on the first failure.
+ * health -> sign in -> templates -> create project -> chat -> specification ->
+ * generate -> preview -> export -> publish -> versions. Exits non-zero on the
+ * first failure.
+ *
+ * Phase 3: every project endpoint requires a session, so this script signs up
+ * (or logs into) an `e2e@luvify.test` account first and carries the resulting
+ * httpOnly cookie jar for the rest of the run.
  */
 
 import type {
@@ -9,6 +14,7 @@ import type {
   GenerateSpecificationResponseDto,
   GenerateWebsiteResponseDto,
   HealthResponseDto,
+  MeResponseDto,
   PreviewResponseDto,
   ProjectDetailDto,
   PublishResponseDto,
@@ -22,11 +28,39 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
+/** Session cookie(s) returned by the server - the browser's job, simulated here. */
+const cookieJar = new Map<string, string>();
+
+function storeCookies(response: Response): void {
+  const lines: string[] =
+    typeof response.headers.getSetCookie === "function" ? response.headers.getSetCookie() : [];
+  for (const line of lines) {
+    const [pair = "", ...attributes] = line.split(";");
+    const index = pair.indexOf("=");
+    if (index < 1) continue;
+    const name = pair.slice(0, index).trim();
+    const value = pair.slice(index + 1).trim();
+    const expired = attributes.some((entry) => /^\s*max-age\s*=\s*0\s*$/i.test(entry));
+    if (expired || !value) cookieJar.delete(name);
+    else cookieJar.set(name, value);
+  }
+}
+
+function cookieHeader(): string {
+  return [...cookieJar.entries()].map(([name, value]) => `${name}=${value}`).join("; ");
+}
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${base}${path}`, {
     ...init,
-    headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
+    credentials: "include",
+    headers: {
+      "content-type": "application/json",
+      ...(cookieJar.size > 0 ? { cookie: cookieHeader() } : {}),
+      ...(init?.headers ?? {}),
+    },
   });
+  storeCookies(response);
   const text = await response.text();
   const payload = text ? (JSON.parse(text) as unknown) : null;
   if (!response.ok) {
@@ -38,6 +72,34 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 
 const step = (label: string): void => console.log(`\n[e2e] ${label}`);
 
+// Local runner credentials for a throwaway `.test` address. Overridable so the
+// script never becomes a shared hard-coded password if it is ever pointed at a
+// deployment: `E2E_EMAIL=... E2E_PASSWORD=... npm run e2e`.
+const E2E_EMAIL = process.env.E2E_EMAIL ?? "e2e@luvify.test";
+const E2E_PASSWORD = process.env.E2E_PASSWORD ?? "e2e-runner-password-2026";
+
+/** Signs up on the first run, logs in on every run after that. */
+async function signIn(): Promise<void> {
+  try {
+    await call<unknown>("/api/auth/signup", {
+      method: "POST",
+      body: JSON.stringify({ name: "E2E Runner", email: E2E_EMAIL, password: E2E_PASSWORD }),
+    });
+    console.log("[e2e]   signed up a fresh account");
+  } catch (error) {
+    if (!String(error).includes("-> 409 ")) throw error;
+    await call<unknown>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: E2E_EMAIL, password: E2E_PASSWORD }),
+    });
+    console.log("[e2e]   signed in with the existing account");
+  }
+  const me = await call<MeResponseDto>("/api/auth/me");
+  assert(me.user.email === E2E_EMAIL, "session did not resolve to the e2e account");
+  assert(cookieJar.size > 0, "no session cookie was set");
+  console.log(`[e2e]   session ok for ${me.user.email} (${me.provider})`);
+}
+
 async function main(): Promise<void> {
   console.log(`[e2e] API base: ${base}`);
 
@@ -46,6 +108,9 @@ async function main(): Promise<void> {
   assert(health.status === "ok", "health is not ok");
   assert(health.database === "connected", `database is ${health.database}`);
   console.log(`[e2e]   ok, ai=${health.aiProvider}, db=${health.database}`);
+
+  step("sign in");
+  await signIn();
 
   step("templates");
   const templates = await call<TemplateDto[]>("/api/templates");
@@ -128,6 +193,12 @@ async function main(): Promise<void> {
   step("cleanup");
   await call(`/api/projects/${project.id}`, { method: "DELETE" });
   console.log("[e2e]   project deleted");
+
+  step("sign out");
+  await call("/api/auth/logout", { method: "POST" });
+  const afterSignOut = await fetch(`${base}/api/auth/me`, { headers: { cookie: cookieHeader() } });
+  assert(afterSignOut.status === 401, `expected 401 after logout, got ${afterSignOut.status}`);
+  console.log("[e2e]   session revoked");
 
   console.log("\n[e2e] ALL CHECKS PASSED");
 }

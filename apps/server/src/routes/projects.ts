@@ -15,13 +15,13 @@ import {
   type DeleteProjectResponseDto,
 } from "@luvify/shared";
 import { env } from "../env";
+import { authed, currentUserId } from "../auth/middleware";
 import { ApiError, apiHandler, parseWith } from "../errors";
 import { refreshDerivedFields, creationTemplateId } from "../generate";
 import { completenessSnapshot, nextQuestion } from "../interview";
 import { prisma } from "../prisma";
 import {
   ensureConversation,
-  ensureDemoUser,
   projectDetail,
   projectInclude,
   toProjectSummary,
@@ -32,8 +32,13 @@ export const projectsRouter = Router();
 
 projectsRouter.get(
   "/",
-  apiHandler(async (_req, res) => {
-    const projects = await prisma.project.findMany({ include: projectInclude, orderBy: { updatedAt: "desc" } });
+  apiHandler(async (req, res) => {
+    // Scoped in the query: only the caller's own projects are ever selected.
+    const projects = await prisma.project.findMany({
+      where: { userId: currentUserId(req) },
+      include: projectInclude,
+      orderBy: { updatedAt: "desc" },
+    });
     res.json(projects.map(toProjectSummary));
   }),
 );
@@ -42,7 +47,10 @@ projectsRouter.post(
   "/",
   apiHandler(async (req, res) => {
     const input = parseWith(CreateProjectRequestSchema, req.body);
-    const user = await ensureDemoUser();
+    // Ownership comes from the session, never from the payload: a `userId` in
+    // the request body is ignored, so nobody can create a project for (or
+    // against) another account.
+    const owner = authed(req).user;
 
     const seed = emptyRequirements(input.websiteType);
     const requirements = refreshDerivedFields(
@@ -72,7 +80,7 @@ projectsRouter.post(
 
     const project = await prisma.project.create({
       data: {
-        userId: user.id,
+        userId: owner.id,
         name: input.name,
         slug,
         businessName: input.businessName || input.name,
@@ -119,23 +127,28 @@ projectsRouter.post(
       },
     });
 
-    res.status(201).json(await projectDetail(project.id));
+    res.status(201).json(await projectDetail(project.id, owner.id));
   }),
 );
 
 projectsRouter.get(
   "/:id",
   apiHandler(async (req, res) => {
-    res.json(await projectDetail(req.params.id ?? ""));
+    res.json(await projectDetail(req.params.id ?? "", currentUserId(req)));
   }),
 );
 
 projectsRouter.patch(
   "/:id",
   apiHandler(async (req, res) => {
+    const id = req.params.id ?? "";
+    const userId = currentUserId(req);
     const input = parseWith(UpdateProjectRequestSchema, req.body);
-    await prisma.project.update({ where: { id: req.params.id ?? "" }, data: input });
-    res.json(await projectDetail(req.params.id ?? ""));
+    // Scoped update: 0 rows affected means "not yours", answered as a 404 so a
+    // guessed id can never be confirmed by the difference between 403 and 404.
+    const { count } = await prisma.project.updateMany({ where: { id, userId }, data: input });
+    if (count === 0) throw ApiError.notFound(`Project "${id}" was not found`);
+    res.json(await projectDetail(id, userId));
   }),
 );
 
@@ -143,7 +156,11 @@ projectsRouter.delete(
   "/:id",
   apiHandler(async (req, res) => {
     const id = req.params.id ?? "";
-    const project = await prisma.project.findUnique({ where: { id }, select: { id: true, slug: true } });
+    const userId = currentUserId(req);
+    const project = await prisma.project.findFirst({
+      where: { id, userId },
+      select: { id: true, slug: true },
+    });
     if (!project) throw ApiError.notFound(`Project "${id}" was not found`);
 
     // Child rows (conversations, messages, requirements, specification, pages,

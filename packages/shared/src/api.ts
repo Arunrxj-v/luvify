@@ -27,6 +27,31 @@ export const DemoLoginRequestSchema = z.object({
 });
 export type DemoLoginRequest = z.infer<typeof DemoLoginRequestSchema>;
 
+/** Longest email accepted - bounds the row and the hashing work per request. */
+const EMAIL = z.string().trim().toLowerCase().min(3).max(254).email("Enter a valid email address.");
+/**
+ * Password policy lives server-side in `apps/server/src/auth/passwords.ts`;
+ * this mirrors the same bounds so the browser can pre-validate without a
+ * round trip. Never the only check - the server re-validates every time.
+ */
+const PASSWORD = z.string().min(8, "Use at least 8 characters.").max(256, "Use at most 256 characters.");
+
+export const SignupRequestSchema = z.object({
+  name: z.string().trim().min(1, "Enter your name.").max(80),
+  email: EMAIL,
+  password: PASSWORD,
+});
+export type SignupRequest = z.infer<typeof SignupRequestSchema>;
+
+export const LoginRequestSchema = z.object({
+  email: EMAIL,
+  // Min 1 (not 8) so a wrong-length password fails with the same generic
+  // "invalid credentials" message instead of revealing the policy on an
+  // account the caller may not own.
+  password: z.string().min(1).max(256),
+});
+export type LoginRequest = z.infer<typeof LoginRequestSchema>;
+
 export interface UserDto {
   id: string;
   name: string;
@@ -36,10 +61,24 @@ export interface UserDto {
   createdAt: string;
 }
 
+/**
+ * The only authenticated response shape. It intentionally carries no bearer
+ * token: the session lives in an httpOnly cookie, so there is never a
+ * credential in a JSON body that JavaScript could read, log or persist.
+ */
 export interface AuthResponseDto {
-  token: string;
   user: UserDto;
   expiresAt: string;
+}
+
+export interface MeResponseDto {
+  user: UserDto;
+  /** Signed-in through Google, or with a password - the UI never sees secrets. */
+  provider: "password" | "google" | "password+google";
+}
+
+export interface LogoutResponseDto {
+  ok: boolean;
 }
 
 // --- projects ---------------------------------------------------------------

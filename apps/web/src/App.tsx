@@ -23,6 +23,8 @@ import {
 } from "@luvify/shared";
 import { api } from "./api";
 import { PreviewErrorBoundary } from "./PreviewErrorBoundary";
+import { AuthScreens } from "./AuthScreens";
+import { useAuth } from "./auth";
 
 type Tab = "chat" | "spec" | "preview" | "files";
 
@@ -35,7 +37,17 @@ const initialDraft: CreateProjectRequest = {
 /** Remembers the open project so a page refresh resumes the conversation. */
 const SAVED_PROJECT_KEY = "luvify.project";
 
-export function App(): JSX.Element {
+/** First letters of the display name - the fallback when there is no avatar. */
+function initialsOf(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+function Studio(): JSX.Element {
   const [health, setHealth] = useState<HealthResponseDto | null>(null);
   const [templates, setTemplates] = useState<TemplateDto[]>([]);
   const [projects, setProjects] = useState<ProjectSummaryDto[]>([]);
@@ -346,6 +358,7 @@ export function App(): JSX.Element {
             </a>
           ) : null}
         </div>
+        <UserMenu />
       </header>
 
       {error || notice ? (
@@ -872,4 +885,51 @@ export function App(): JSX.Element {
       ) : null}
     </div>
   );
+}
+
+/**
+ * Signed-in identity in the top bar: avatar, name, email and sign out.
+ * Deliberately small - it adds an account area without redesigning the shell.
+ */
+function UserMenu(): JSX.Element {
+  const { user, signOut, pending } = useAuth();
+  if (!user) return <></>;
+
+  return (
+    <div className="topbar-user">
+      {user.avatarUrl ? (
+        <img className="avatar" src={user.avatarUrl} alt="" referrerPolicy="no-referrer" />
+      ) : (
+        <span className="avatar" aria-hidden="true">
+          {initialsOf(user.name)}
+        </span>
+      )}
+      <span className="user-meta">
+        <strong>{user.name}</strong>
+        <span className="muted">{user.email}</span>
+      </span>
+      <button className="btn" onClick={() => void signOut()} disabled={pending}>
+        {pending ? "Signing out..." : "Sign out"}
+      </button>
+    </div>
+  );
+}
+
+export function App(): JSX.Element {
+  const { status } = useAuth();
+
+  // Still asking the server who we are: show a splash, never the dashboard.
+  if (status === "loading") {
+    return (
+      <div className="auth-shell auth-loading" role="status" aria-live="polite">
+        <span className="brand-mark">L</span>
+        <p className="muted">Checking your session...</p>
+      </div>
+    );
+  }
+
+  // No live session -> the project dashboard is unreachable, not merely hidden.
+  if (status === "anonymous") return <AuthScreens />;
+
+  return <Studio />;
 }

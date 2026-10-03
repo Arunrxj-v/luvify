@@ -134,7 +134,7 @@ async function main(): Promise<void> {
     },
   });
 
-  const loaded = await loadProject(project.id);
+  const loaded = await loadProject(project.id, project.userId);
   const specification = buildSpecification({
     siteName: DEMO.businessName,
     websiteType: DEMO.websiteType,

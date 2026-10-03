@@ -24,6 +24,7 @@ import {
   type WebsiteSpecification,
 } from "@luvify/shared";
 import { exportSite, renderPreview } from "@luvify/site-renderer";
+import { currentUserId } from "../auth/middleware";
 import { ApiError, apiHandler, parseWith } from "../errors";
 import { env } from "../env";
 import {
@@ -88,7 +89,7 @@ websiteRouter.post(
   "/:id/generate",
   apiHandler(async (req, res) => {
     const input = parseWith(GenerateWebsiteRequestSchema, req.body, "Generate request");
-    const project = await loadProject(req.params.id ?? "");
+    const project = await loadProject(req.params.id ?? "", currentUserId(req));
     // Derived data (product summary, archetype, approved page plan) is
     // refreshed first, so generation is always grounded in the client's
     // current requirements rather than a stale snapshot.
@@ -215,7 +216,7 @@ websiteRouter.post(
   "/:id/modify",
   apiHandler(async (req, res) => {
     const input = parseWith(ModifyWebsiteRequestSchema, req.body, "Modify request");
-    const project = await loadProject(req.params.id ?? "");
+    const project = await loadProject(req.params.id ?? "", currentUserId(req));
     const before = documentOf(project);
     if (!before) throw ApiError.badRequest("Generate the website before modifying it.");
 
@@ -306,7 +307,7 @@ websiteRouter.post(
 websiteRouter.get(
   "/:id/preview",
   apiHandler(async (req, res) => {
-    const project = await loadProject(req.params.id ?? "");
+    const project = await loadProject(req.params.id ?? "", currentUserId(req));
     const document = documentOf(project);
     if (!document) throw ApiError.badRequest("Generate the website to see a preview.");
 
@@ -324,7 +325,7 @@ websiteRouter.get(
 websiteRouter.get(
   "/:id/export",
   apiHandler(async (req, res) => {
-    const project = await loadProject(req.params.id ?? "");
+    const project = await loadProject(req.params.id ?? "", currentUserId(req));
     const document = documentOf(project);
     if (!document) throw ApiError.badRequest("Generate the website before exporting it.");
 
@@ -344,7 +345,7 @@ websiteRouter.post(
   "/:id/publish",
   apiHandler(async (req, res) => {
     const input = parseWith(PublishRequestSchema, req.body, "Publish request");
-    const project = await loadProject(req.params.id ?? "");
+    const project = await loadProject(req.params.id ?? "", currentUserId(req));
     const document = documentOf(project);
     if (!document) throw ApiError.badRequest("Generate the website before publishing it.");
 
@@ -364,7 +365,7 @@ websiteRouter.post(
 websiteRouter.get(
   "/:id/versions",
   apiHandler(async (req, res) => {
-    const project = await loadProject(req.params.id ?? "");
+    const project = await loadProject(req.params.id ?? "", currentUserId(req));
     res.json(project.versions.map((version) => toVersionDto(version, project.currentVersionId)));
   }),
 );
@@ -372,7 +373,7 @@ websiteRouter.get(
 websiteRouter.post(
   "/:id/versions/:versionNumber/restore",
   apiHandler(async (req, res) => {
-    const project = await loadProject(req.params.id ?? "");
+    const project = await loadProject(req.params.id ?? "", currentUserId(req));
     const versionNumber = Number(req.params.versionNumber);
     const snapshot = await prisma.websiteVersion.findFirst({
       where: { projectId: project.id, versionNumber },
