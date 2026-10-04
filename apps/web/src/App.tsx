@@ -61,6 +61,7 @@ function Studio(): JSX.Element {
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState<CreateProjectRequest>(initialDraft);
   const [chatText, setChatText] = useState("");
+  const [picked, setPicked] = useState<string | null>(null);
   const [modifyText, setModifyText] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -108,7 +109,12 @@ function Studio(): JSX.Element {
     );
     setMessages(conversation.messages);
     setCompleteness(conversation.completeness);
+    setPicked(null);
     setPreview(null);
+    // Drafts belong to the project they were typed for: clear them so one
+    // project's half-written text never appears in another project's UI.
+    setChatText("");
+    setModifyText("");
     localStorage.setItem(SAVED_PROJECT_KEY, id);
   }, []);
 
@@ -118,10 +124,10 @@ function Studio(): JSX.Element {
     );
   }, []);
 
-  // Keep the transcript scrolled to the newest message.
+  // Keep the newest message in view: the transcript flows with the page now.
   useEffect(() => {
-    const element = messagesRef.current;
-    if (element) element.scrollTop = element.scrollHeight;
+    const last = messagesRef.current?.lastElementChild;
+    if (last instanceof HTMLElement) last.scrollIntoView({ block: "nearest" });
   }, [messages, tab]);
 
   // Mirror the stored Product/Business summary into the editable field so the
@@ -173,6 +179,13 @@ function Studio(): JSX.Element {
     if (!last || last.role !== "assistant") return null;
     return last.payload?.questions[0] ?? null;
   }, [messages]);
+
+  /**
+   * The first assistant message is the introduction: the reference design puts
+   * it (with the assistant identity) in the right-hand context column while
+   * the transcript column carries the history and the live question.
+   */
+  const intro = messages[0]?.role === "assistant" ? messages[0] : null;
 
   /** Requirements as stored - the source of the summary and the page plan. */
   const requirements = project?.requirements ?? null;
@@ -330,35 +343,93 @@ function Studio(): JSX.Element {
       await refreshProjects();
     }).finally(() => {
       sendingRef.current = false;
+      setPicked(null);
     });
   };
 
+  /**
+   * The brand returns to the top of the workspace - the project strip sits
+   * directly below the header at every breakpoint, so one scroll reaches it.
+   */
+  const backToTop = () => {
+    window.scrollTo(0, 0);
+  };
+
+  /**
+   * Requirements + change request: one panel used in two places - inside the
+   * interview's context column (as the reference shows) and below the other
+   * workspace tabs. Same state, same handlers, single source.
+   */
+  const requirementsSection = (
+    <section className="requirements">
+      <div className="req-info">
+        <div className="req-head">
+          <span className="req-label">
+            Requirements {completeness?.overall ?? project?.completeness ?? 0}%
+          </span>
+          <span className="req-stage">{completeness?.readyForGeneration ? "Ready to build" : "Discovery"}</span>
+        </div>
+        <div className="meter">
+          <span style={{ width: `${completeness?.overall ?? project?.completeness ?? 0}%` }} />
+        </div>
+        {completeness && completeness.blocking.length > 0 ? (
+          <p className="req-note">Still needed: {completeness.blocking.join(", ")}</p>
+        ) : null}
+      </div>
+      <div className="req-change">
+        <input
+          className="req-input"
+          value={modifyText}
+          onChange={(event) => setModifyText(event.target.value)}
+          placeholder="e.g. shorten the hero headline"
+        />
+        <button
+          className={"btn ink req-apply" + (busy === "modify" ? " is-loading" : "")}
+          onClick={modifyWebsite}
+          disabled={busy !== null}
+        >
+          Apply change
+        </button>
+      </div>
+    </section>
+  );
+
   return (
     <div className="app">
-      <header className="topbar">
-        <div className="brand">
-          <span className="brand-mark">L</span>
-          Luvify <span className="brand-sub">studio</span>
-        </div>
-        <div className="topbar-meta">
+      <header className="header">
+        <button className="brand" type="button" onClick={backToTop} aria-label="Luvify studio - back to top">
+          <span className="brand-mark" aria-hidden="true">
+            L
+          </span>
+          <span className="brand-name">
+            Luvify <span className="brand-weak">studio</span>
+          </span>
+        </button>
+
+        <div className="header-status">
           <span
             className={
-              health?.database === "connected" && health.aiKeyConfigured ? "pill ok" : "pill warn"
+              health?.database === "connected" && health.aiKeyConfigured ? "status-dot" : "status-dot warn"
             }
-          >
+            aria-hidden="true"
+          />
+          <span className="status-text">
             {health
               ? `API ${health.database} · AI ${health.aiProvider}${
                   health.aiProvider === "openrouter" ? (health.aiKeyConfigured ? " ✓" : " · key missing") : ""
                 }`
               : "connecting..."}
           </span>
+        </div>
+
+        <div className="header-right">
           {project?.deploymentUrl ? (
-            <a className="pill link" href={project.deploymentUrl} target="_blank" rel="noreferrer">
+            <a className="live-link" href={project.deploymentUrl} target="_blank" rel="noreferrer">
               Live site ↗
             </a>
           ) : null}
+          <UserMenu />
         </div>
-        <UserMenu />
       </header>
 
       {error || notice ? (
@@ -386,18 +457,16 @@ function Studio(): JSX.Element {
         </div>
       ) : null}
 
-      <div className="layout">
-        <aside className="sidebar">
-          <div className="sidebar-head">
-            <h2>Projects</h2>
-            <button className="btn primary" onClick={() => setCreating((value) => !value)}>
-              {creating ? "Cancel" : "New project"}
-            </button>
-          </div>
+      <nav className="strip" aria-label="Projects">
+        <div className="strip-row">
+          <h2 className="strip-label">Projects</h2>
+          <button className="btn accent" onClick={() => setCreating((value) => !value)}>
+            {creating ? "Cancel" : "New project"}
+          </button>
 
           {creating ? (
             <form
-              className="card form"
+              className="form strip-form"
               onSubmit={(event) => {
                 event.preventDefault();
                 void createProject();
@@ -465,8 +534,12 @@ function Studio(): JSX.Element {
                   </select>
                 </label>
               </div>
-              <button className="btn primary" type="submit" disabled={busy === "create"}>
-                {busy === "create" ? "Creating..." : "Create project"}
+              <button
+                className={"btn ink" + (busy === "create" ? " is-loading" : "")}
+                type="submit"
+                disabled={busy === "create"}
+              >
+                Create project
               </button>
             </form>
           ) : null}
@@ -490,9 +563,10 @@ function Studio(): JSX.Element {
             ))}
             {projects.length === 0 ? <li className="muted">No projects yet.</li> : null}
           </ul>
-        </aside>
+        </div>
+      </nav>
 
-        <main className="main">
+      <main className={project ? "main" : "main main--blank"}>
           {!project ? (
             <div className="empty">
               <h1>Describe your business. Get a website.</h1>
@@ -504,73 +578,50 @@ function Studio(): JSX.Element {
           ) : null}
           {project ? (
             <div className="project">
-              <div className="project-head card">
-                <div>
-                  <h1>{project.name}</h1>
-                  <p className="muted">
+              <div className="project-head">
+                <div className="project-id">
+                  <h1 className="project-title">{project.name}</h1>
+                  <p className="project-sub">
                     {project.businessName} · {project.websiteType} · {project.status} ·{" "}
                     {project.currentVersionNumber ? `v${project.currentVersionNumber}` : "no version yet"}
                   </p>
                 </div>
                 <div className="actions">
-                  <button className="btn" onClick={generateSpecification} disabled={busy !== null}>
+                  <button
+                    className={"btn" + (busy === "spec" ? " is-loading" : "")}
+                    onClick={generateSpecification}
+                    disabled={busy !== null}
+                  >
                     {project.specification ? "Rebuild spec" : "Generate spec"}
                   </button>
-                  <button className="btn primary" onClick={generateWebsite} disabled={busy !== null}>
-                    {busy === "generate" ? "Building..." : project.document ? "Regenerate site" : "Build website"}
+                  <button
+                    className={"btn primary" + (busy === "generate" ? " is-loading" : "")}
+                    onClick={generateWebsite}
+                    disabled={busy !== null}
+                  >
+                    {project.document ? "Regenerate site" : "Build website"}
                   </button>
                   <button
-                    className="btn"
+                    className={"btn" + (busy === "export" ? " is-loading" : "")}
                     onClick={downloadExport}
-                    disabled={busy !== null || !project.document}
+                    disabled={busy !== null}
                   >
                     Export .zip
                   </button>
                   <button
-                    className="btn"
+                    className={"btn" + (busy === "publish" ? " is-loading" : "")}
                     onClick={publishWebsite}
-                    disabled={busy !== null || !project.document}
+                    disabled={busy !== null}
                   >
                     Publish
                   </button>
+                  <span className="actions-divider" aria-hidden="true" />
                   <button
                     className="btn danger"
                     onClick={() => setConfirmingDelete(true)}
                     disabled={busy !== null}
                   >
                     Delete
-                  </button>
-                </div>
-              </div>
-
-              <div className="card">
-                <div className="meter-head">
-                  <strong>Requirements {completeness?.overall ?? project.completeness}%</strong>
-                  <span className={completeness?.readyForGeneration ? "tag ok" : "tag"}>
-                    {completeness?.readyForGeneration ? "Ready to build" : "Discovery"}
-                  </span>
-                </div>
-                <div className="meter">
-                  <span style={{ width: `${completeness?.overall ?? project.completeness}%` }} />
-                </div>
-                {completeness && completeness.blocking.length > 0 ? (
-                  <p className="muted">Still needed: {completeness.blocking.join(", ")}</p>
-                ) : null}
-              </div>
-
-              <div className="card">
-                <div className="row">
-                  <input
-                    value={modifyText}
-                    onChange={(event) => setModifyText(event.target.value)}
-                    placeholder="e.g. shorten the hero headline and add a booking call to action"
-                  />
-                  <button
-                    className="btn"
-                    onClick={modifyWebsite}
-                    disabled={busy !== null || !project.document || !modifyText.trim()}
-                  >
-                    Apply change
                   </button>
                 </div>
               </div>
@@ -588,78 +639,123 @@ function Studio(): JSX.Element {
               </nav>
 
               {tab === "chat" ? (
-                <div className="card chat">
-                  <div className="messages" ref={messagesRef}>
-                    {messages.map((message) => (
-                      <div key={message.id} className={`message ${message.role}`}>
-                        <div className="message-role">
-                          {message.role === "user"
-                            ? "You"
-                            : message.role === "generation"
-                              ? "Build"
-                              : "Assistant"}
-                        </div>
-                        <div className="message-body">{message.content}</div>
-                      </div>
-                    ))}
-                    {messages.length === 0 ? (
-                      <p className="muted">Start the conversation below.</p>
-                    ) : null}
+                <div className="workspace">
+                  <div className="panel interview">
+                    <div className="transcript" ref={messagesRef}>
+                      {messages.map((message, index) => {
+                        const question = index === messages.length - 1 ? activeQuestion : null;
+                        // The introduction lives in the context column; while it
+                        // is also the last message its question still opens here.
+                        const lead = intro !== null && index === 0;
+                        if (lead && !question) return null;
+                        return (
+                          <article
+                            key={message.id}
+                            className={`msg ${message.role}${lead ? " msg--lead" : ""}`}
+                          >
+                            {lead ? null : (
+                              <>
+                                <div className="msg-role">
+                                  {message.role === "assistant" ? (
+                                    <>
+                                      <span className="msg-square" aria-hidden="true" />
+                                      Luvify assistant
+                                    </>
+                                  ) : message.role === "user" ? (
+                                    "You"
+                                  ) : (
+                                    "Build"
+                                  )}
+                                </div>
+                                <div className="msg-body">{message.content}</div>
+                              </>
+                            )}
+                            {question ? (
+                              <>
+                                <h2 className="question">{message.payload?.heading || question.question}</h2>
+                                {question.help ? (
+                                  <p className="question-help">{question.help}</p>
+                                ) : null}
+                                {question.options.length > 0 ? (
+                                  <div className="options">
+                                    {question.options.map((option) => (
+                                      <button
+                                        key={option}
+                                        type="button"
+                                        className={"option" + (picked === option ? " selected" : "")}
+                                        disabled={busy !== null}
+                                        onClick={() => {
+                                          setPicked(option);
+                                          void sendMessage(option, {
+                                            questionId: question.id,
+                                            mapsTo: question.mapsTo,
+                                            optionLabels: [option],
+                                          });
+                                        }}
+                                      >
+                                        <span className="radio" aria-hidden="true" />
+                                        <span>{option}</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </>
+                            ) : null}
+                          </article>
+                        );
+                      })}
+                      {messages.length === 0 ? (
+                        <p className="transcript-empty">Start the conversation below.</p>
+                      ) : null}
+                    </div>
+
+                    <form
+                      className="composer"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void sendMessage(
+                          chatText,
+                          activeQuestion
+                            ? { questionId: activeQuestion.id, mapsTo: activeQuestion.mapsTo }
+                            : undefined,
+                        );
+                      }}
+                    >
+                      <input
+                        className="composer-input"
+                        value={chatText}
+                        onChange={(event) => setChatText(event.target.value)}
+                        placeholder={
+                          activeQuestion ? activeQuestion.question : "Tell me about your business..."
+                        }
+                      />
+                      <button
+                        className={"btn primary composer-send" + (busy === "chat" ? " is-loading" : "")}
+                        type="submit"
+                        disabled={busy !== null}
+                      >
+                        Send
+                      </button>
+                    </form>
                   </div>
 
-                  {activeQuestion && activeQuestion.options.length > 0 ? (
-                    <div className="quick-replies">
-                      {activeQuestion.options.map((option) => (
-                        <button
-                          key={option}
-                          className="chip"
-                          disabled={busy !== null}
-                          onClick={() =>
-                            void sendMessage(option, {
-                              questionId: activeQuestion.id,
-                              mapsTo: activeQuestion.mapsTo,
-                              optionLabels: [option],
-                            })
-                          }
-                        >
-                          {option}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-
-                  <form
-                    className="chat-form"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      void sendMessage(
-                        chatText,
-                        activeQuestion
-                          ? { questionId: activeQuestion.id, mapsTo: activeQuestion.mapsTo }
-                          : undefined,
-                      );
-                    }}
-                  >
-                    <input
-                      value={chatText}
-                      onChange={(event) => setChatText(event.target.value)}
-                      placeholder={
-                        activeQuestion ? activeQuestion.question : "Tell me about your business..."
-                      }
-                    />
-                    <button
-                      className="btn primary"
-                      type="submit"
-                      disabled={busy !== null || !chatText.trim()}
-                    >
-                      {busy === "chat" ? "Sending..." : "Send"}
-                    </button>
-                  </form>
+                  <aside className="context">
+                    {intro ? (
+                      <div className="assistant-block">
+                        <div className="msg-role">
+                          <span className="msg-square" aria-hidden="true" />
+                          Luvify assistant
+                        </div>
+                        <div className="msg-body">{intro.content}</div>
+                      </div>
+                    ) : null}
+                    {requirementsSection}
+                  </aside>
                 </div>
               ) : null}
 
               {tab === "spec" ? (
-                <div className="card">
+                <div className="panel">
                   <section className="summary-block">
                     <header>
                       <h3>What we&apos;re building</h3>
@@ -679,11 +775,11 @@ function Studio(): JSX.Element {
                     />
                     <div className="row">
                       <button
-                        className="btn primary"
+                        className={"btn ink" + (busy === "summary" ? " is-loading" : "")}
                         onClick={() => void saveSummary()}
                         disabled={busy !== null || summaryText.trim() === (requirements?.business.productSummary ?? "")}
                       >
-                        {busy === "summary" ? "Saving..." : "Save summary"}
+                        Save summary
                       </button>
                       <button
                         className="btn"
@@ -769,7 +865,7 @@ function Studio(): JSX.Element {
               ) : null}
 
               {tab === "preview" ? (
-                <div className="card preview-card">
+                <div className="panel preview-card">
                   <PreviewErrorBoundary onReset={() => void loadPreview(project.id, preview?.page ?? "/")}>
                     {!project.document ? (
                       <p className="muted">Build the website to see the live preview.</p>
@@ -805,7 +901,7 @@ function Studio(): JSX.Element {
               ) : null}
 
               {tab === "files" ? (
-                <div className="card">
+                <div className="panel">
                   <div className="files-head">
                     <strong>{project.files.length} generated files</strong>
                     <button
@@ -849,10 +945,10 @@ function Studio(): JSX.Element {
                   ) : null}
                 </div>
               ) : null}
+              {tab !== "chat" ? requirementsSection : null}
             </div>
           ) : null}
         </main>
-      </div>
 
       {confirmingDelete && project ? (
         <div className="modal-backdrop" onClick={() => setConfirmingDelete(false)}>
@@ -873,11 +969,11 @@ function Studio(): JSX.Element {
                 Cancel
               </button>
               <button
-                className="btn danger"
+                className={"btn danger" + (busy === "delete" ? " is-loading" : "")}
                 onClick={() => void deleteProject()}
                 disabled={busy === "delete"}
               >
-                {busy === "delete" ? "Deleting..." : "Delete project"}
+                Delete project
               </button>
             </div>
           </div>
@@ -896,7 +992,7 @@ function UserMenu(): JSX.Element {
   if (!user) return <></>;
 
   return (
-    <div className="topbar-user">
+    <div className="header-user">
       {user.avatarUrl ? (
         <img className="avatar" src={user.avatarUrl} alt="" referrerPolicy="no-referrer" />
       ) : (
@@ -905,11 +1001,15 @@ function UserMenu(): JSX.Element {
         </span>
       )}
       <span className="user-meta">
-        <strong>{user.name}</strong>
-        <span className="muted">{user.email}</span>
+        <strong className="user-name">{user.name}</strong>
+        <span className="user-email">{user.email}</span>
       </span>
-      <button className="btn" onClick={() => void signOut()} disabled={pending}>
-        {pending ? "Signing out..." : "Sign out"}
+      <button
+        className={"sign-out" + (pending ? " is-loading" : "")}
+        onClick={() => void signOut()}
+        disabled={pending}
+      >
+        Sign out
       </button>
     </div>
   );

@@ -109,7 +109,7 @@ projectsRouter.post(
     const conversation = await ensureConversation(project.id, "REQUIREMENTS", "Requirements");
     const question = nextQuestion(requirements);
     const content = question
-      ? `Hi! I'm the Luvify assistant. I'll ask a few short questions, then build ${input.name} for you. First: ${question.question}`
+      ? `Hi! I'm the Luvify assistant. I'll ask a few short questions, then build ${input.name} for you.`
       : `I already have everything I need for ${input.name} - generate the specification whenever you're ready.`;
     await prisma.message.create({
       data: {
@@ -120,6 +120,7 @@ projectsRouter.post(
         payload: JSON.stringify({
           kind: question ? "question" : "confirmation",
           questions: question ? [question] : [],
+          heading: question ? `First: ${question.question}` : undefined,
           completeness: completenessSnapshot(report),
           readyForGeneration: report.readyForGeneration,
           provider: env.aiProvider,

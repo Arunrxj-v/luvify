@@ -56,6 +56,13 @@ export const MessagePayloadSchema = z.object({
   /** Drives which card the chat renders for an assistant message. */
   kind: z.enum(["text", "question", "confirmation", "generation", "modification", "system"]).default("text"),
   questions: z.array(InterviewQuestionSchema).default([]),
+  /**
+   * Display heading for the question block. The opening question reads
+   * "First: Which industry are you in?" as its heading while the message body
+   * stays conversational prose - the composer placeholder still uses the raw
+   * `questions[].question` text.
+   */
+  heading: z.string().optional(),
   suggestions: z.array(z.string()).default([]),
   bullets: z.array(z.string()).default([]),
   completeness: CompletenessSnapshotSchema.optional(),
