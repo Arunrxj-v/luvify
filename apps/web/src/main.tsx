@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { App } from "./App";
 import { AuthProvider } from "./auth";
+import { initTheme } from "./theme";
 
 // Typefaces of the Luvify design system, bundled (no runtime network calls):
 // Lora for the editorial display sizes (project title, interview question),
@@ -16,6 +17,11 @@ import "./styles.css";
 
 const container = document.getElementById("root");
 if (!container) throw new Error("Missing #root container");
+
+// Apply the stored light/dark preference before the first render. The inline
+// script in index.html has normally already set it before first paint; this
+// call is idempotent and covers environments where that script did not run.
+initTheme();
 
 createRoot(container).render(
   <React.StrictMode>
