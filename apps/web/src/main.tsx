@@ -1,5 +1,6 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
+import { BrowserRouter } from "react-router-dom";
 import { App } from "./App";
 import { AuthProvider } from "./auth";
 
@@ -18,8 +19,13 @@ if (!container) throw new Error("Missing #root container");
 
 createRoot(container).render(
   <React.StrictMode>
-    <AuthProvider>
-      <App />
-    </AuthProvider>
+    {/* The router owns the URL: `/` is the Projects dashboard and
+        `/projects/:id` is a workspace, so a refresh reopens exactly what the
+        address bar says - no more, no less. */}
+    <BrowserRouter>
+      <AuthProvider>
+        <App />
+      </AuthProvider>
+    </BrowserRouter>
   </React.StrictMode>,
 );
