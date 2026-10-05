@@ -11,9 +11,12 @@ import {
   RequirementsSchema,
   SiteDocumentSchema,
   applyClientCorrections,
+  briefKnownFacts,
   extractRequirementsFromText,
+  foldBrief,
   mergeRequirements,
   parseWebsiteSpecification,
+  unfoldBrief,
   type ExportResponseDto,
   type GenerateWebsiteResponseDto,
   type ModifyWebsiteResponseDto,
@@ -25,6 +28,7 @@ import {
 } from "@luvify/shared";
 import { exportSite, renderPreview } from "@luvify/site-renderer";
 import { currentUserId } from "../auth/middleware";
+import { hydrateProjectDocument } from "../assets";
 import { ApiError, apiHandler, parseWith } from "../errors";
 import { env } from "../env";
 import {
@@ -39,6 +43,7 @@ import { prisma } from "../prisma";
 import { aiIsEnabled, generateSiteWithAI, getAIProvider, runAI } from "../services/ai";
 import { nextVersionNumber, persistSite, publishProject, verifyDocumentIsolation } from "../pipeline";
 import {
+  briefOf,
   documentOf,
   loadProject,
   recordActivity,
@@ -61,16 +66,25 @@ function existingSpecification(
 }
 
 /**
- * A stored specification is stale when the product summary changed or the
- * approved page plan no longer matches the current requirements - regenerating
- * keeps the spec (and therefore the generation context) grounded.
+ * A stored specification is stale when the product summary changed, the
+ * approved page plan no longer matches the current requirements, or the client
+ * edited the brief after the spec was built - regenerating keeps the spec (and
+ * therefore the generation context) grounded in both the interview and the
+ * brief.
  */
-function specificationIsStale(spec: WebsiteSpecification | null, requirements: Requirements): boolean {
+function specificationIsStale(
+  spec: WebsiteSpecification | null,
+  requirements: Requirements,
+  timestamps: { briefUpdatedAt?: Date | null; specUpdatedAt?: Date | null } = {},
+): boolean {
   if (!spec) return true;
   if (spec.projectContext.productSummary !== requirements.business.productSummary) return true;
   const planned = pagePlanFor(requirements).pages.map((page) => page.path.toLowerCase()).sort();
   const stored = spec.architecture.pages.map((page) => page.path.toLowerCase()).sort();
-  return planned.join("|") !== stored.join("|");
+  if (planned.join("|") !== stored.join("|")) return true;
+  const { briefUpdatedAt, specUpdatedAt } = timestamps;
+  if (briefUpdatedAt && specUpdatedAt && briefUpdatedAt.getTime() > specUpdatedAt.getTime()) return true;
+  return false;
 }
 
 /** Persists derived fields (summary, archetype, page plan) when they changed. */
@@ -93,7 +107,14 @@ websiteRouter.post(
     // Derived data (product summary, archetype, approved page plan) is
     // refreshed first, so generation is always grounded in the client's
     // current requirements rather than a stale snapshot.
-    const requirements = await syncDerivedRequirements(project.id, requirementsOf(project));
+    const base = await syncDerivedRequirements(project.id, requirementsOf(project));
+    // GENERATION VIEW: the brief (menus, rooms, contact details, ...) fills
+    // every gap the interview left. It is folded only in memory - what gets
+    // persisted back is unfolded, so the interview stays the single stored
+    // source of truth and deleting brief data can never leave ghosts behind.
+    const brief = briefOf(project);
+    const requirements = foldBrief(base, brief);
+    const extraFacts = briefKnownFacts(brief, requirements);
 
     // REAL AI PATH. OpenRouter decides the architecture and writes every page.
     // Any provider failure is translated into a specific API error and returned
@@ -114,6 +135,7 @@ websiteRouter.post(
           versionNumber,
           specificationVersion,
           templateId: input.templateId ?? null,
+          extraFacts,
         }),
       );
 
@@ -132,20 +154,25 @@ websiteRouter.post(
       });
       // The model's plan/summary become the project's stored requirements, so
       // the preview panel and the next generation agree with what was built.
-      await saveRequirements(project.id, generated.requirements);
+      // Unfolding first strips the transient brief values: only what the
+      // interview itself owns is persisted.
+      await saveRequirements(project.id, unfoldBrief(generated.requirements, base));
       await recordActivity(
         project.id,
         "specification_generated",
         `Specification v${specificationVersion} generated with ${generated.report.model}`,
       );
 
-      const exported = exportSite(generated.document, {
+      // Real uploads become real images: fill every empty image slot from this
+      // project's assets (hero, gallery, products, team, logo).
+      const document = await hydrateProjectDocument(project, generated.document);
+      const exported = exportSite(document, {
         projectName: project.slug,
         siteUrl: env.publicBaseUrl,
       });
       const body: GenerateWebsiteResponseDto = await persistSite({
         project,
-        document: generated.document,
+        document,
         specification: generated.specification,
         files: exported.files,
         changeDescription:
@@ -160,7 +187,14 @@ websiteRouter.post(
     }
 
     let specification = existingSpecification(project.specification);
-    if (!specification || input.regenerateSpecification || specificationIsStale(specification, requirements)) {
+    if (
+      !specification ||
+      input.regenerateSpecification ||
+      specificationIsStale(specification, requirements, {
+        briefUpdatedAt: project.brief?.updatedAt ?? null,
+        specUpdatedAt: project.specification?.updatedAt ?? null,
+      })
+    ) {
       const version = (project.specification?.version ?? 0) + 1;
       specification = buildSpecification({
         siteName: project.businessName || project.name,
@@ -168,6 +202,7 @@ websiteRouter.post(
         requirements,
         provider: env.aiProvider,
         version,
+        extraFacts,
       });
       const data = JSON.stringify(specification);
       await prisma.websiteSpecification.upsert({
@@ -188,7 +223,7 @@ websiteRouter.post(
       archetype: specification.architecture.archetype,
     });
     const versionNumber = await nextVersionNumber(project.id);
-    const document = buildDocument({
+    const built = buildDocument({
       project,
       requirements,
       specification,
@@ -196,6 +231,7 @@ websiteRouter.post(
       provider: env.aiProvider,
       templateId: input.templateId,
     });
+    const document = await hydrateProjectDocument(project, built);
     const exported = exportSite(document, { projectName: project.slug, siteUrl: env.publicBaseUrl });
 
     const body: GenerateWebsiteResponseDto = await persistSite({
@@ -230,24 +266,30 @@ websiteRouter.post(
     // The modified requirements go through the same derivation as chat, so an
     // instruction like "add a pricing page" updates the approved architecture.
     const derived = await syncDerivedRequirements(project.id, requirements);
+    // GENERATION VIEW: the brief fills what the interview left open (menus,
+    // contact details, photos). Only `derived` was persisted above.
+    const brief = briefOf(project);
+    const folded = foldBrief(derived, brief);
+    const extraFacts = briefKnownFacts(brief, folded);
 
     const templateId = resolveTemplateId({
       requested: null,
       current: project.templateId,
       websiteType: project.websiteType,
-      archetype: pagePlanFor(derived).archetype,
+      archetype: pagePlanFor(folded).archetype,
     });
     const versionNumber = await nextVersionNumber(project.id);
     let specification = buildSpecification({
       siteName: project.businessName || project.name,
       websiteType: project.websiteType,
-      requirements: derived,
+      requirements: folded,
       provider: env.aiProvider,
       version: project.specification?.version ?? 1,
+      extraFacts,
     });
     let after = buildDocument({
       project,
-      requirements: derived,
+      requirements: folded,
       specification,
       versionNumber,
       provider: env.aiProvider,
@@ -266,15 +308,18 @@ websiteRouter.post(
             websiteType: project.websiteType,
             templateId: project.templateId,
           },
-          requirements: derived,
+          requirements: folded,
           versionNumber,
           specificationVersion: (project.specification?.version ?? 0) + 1,
           templateId,
+          extraFacts,
         }),
       );
       specification = generated.specification;
       after = generated.document;
     }
+    // Client uploads fill every empty image slot before the document persists.
+    after = await hydrateProjectDocument(project, after);
     const diff = diffDocuments(before, after);
     const exported = exportSite(after, { projectName: project.slug, siteUrl: env.publicBaseUrl });
     const instruction = input.instruction.trim();
@@ -387,11 +432,14 @@ websiteRouter.post(
     const restoredVersion = await nextVersionNumber(project.id);
     document.meta.versionNumber = restoredVersion;
     document.meta.generatedAt = new Date().toISOString();
+    // An old snapshot may reference assets deleted since; hydration clears
+    // those refs and re-applies the client's current images.
+    const hydrated = await hydrateProjectDocument(project, document);
 
-    const exported = exportSite(document, { projectName: project.slug, siteUrl: env.publicBaseUrl });
+    const exported = exportSite(hydrated, { projectName: project.slug, siteUrl: env.publicBaseUrl });
     const generated = await persistSite({
       project,
-      document,
+      document: hydrated,
       specification,
       files: exported.files,
       changeDescription: `Restored from version ${snapshot.versionNumber}`,

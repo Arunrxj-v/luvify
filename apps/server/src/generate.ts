@@ -187,6 +187,8 @@ export interface SpecificationInput {
   provider: string;
   version: number;
   requestedPages?: string[];
+  /** Verified brief facts (menus, hours, ...) appended to the knowledge. */
+  extraFacts?: string[];
 }
 
 /**
@@ -205,6 +207,7 @@ export function buildSpecification(input: SpecificationInput): WebsiteSpecificat
     archetype: plan.archetype,
     requiredPages: plan.pages.map((page) => page.name),
     userJourneys: plan.userJourneys,
+    extraFacts: input.extraFacts,
   });
 
   // The approved architecture drives the pages; legacy fallbacks only apply

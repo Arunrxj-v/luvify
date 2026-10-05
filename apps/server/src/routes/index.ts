@@ -22,6 +22,7 @@ import { businessRouter } from "./business";
 import { conversationRouter } from "./conversation";
 import { projectInsightsRouter } from "./insights";
 import { projectsRouter } from "./projects";
+import { projectBriefRouter } from "./brief";
 import { systemRouter } from "./system";
 import { websiteRouter } from "./website";
 
@@ -35,6 +36,7 @@ apiRouter.use(requireAuth);
 
 apiRouter.use("/projects", projectsRouter);
 apiRouter.use("/projects", projectInsightsRouter);
+apiRouter.use("/projects", projectBriefRouter);
 apiRouter.use("/projects", conversationRouter);
 apiRouter.use("/projects", websiteRouter);
 apiRouter.use("/projects", businessRouter);

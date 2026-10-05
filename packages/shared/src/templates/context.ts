@@ -93,6 +93,14 @@ export function detectStyle(input: string, fallback: DesignStyle = "modern"): De
   return fallback;
 }
 
+/**
+ * Per-section item caps from the section schemas. Real client data (a full
+ * menu, a 40-product catalog) can exceed what ONE section may render, and
+ * `SectionSchema.parse` throws past these limits - so templates receive the
+ * capped view while knowledge/facts keep the complete list.
+ */
+const SECTION_ITEM_CAPS = { services: 12, products: 24, testimonials: 9, faqs: 14 } as const;
+
 export interface PersonalizedContent {
   siteName: string;
   tagline: string;
@@ -247,11 +255,12 @@ export function personalize(context: TemplateContext): PersonalizedContent {
     offerings,
     audience: req?.business.targetAudience?.trim() ?? "",
     about: req?.content.about?.trim() ? paragraphs(req.content.about.trim()) : [],
-    services: (req?.content.services ?? []).length
+    services: ((req?.content.services ?? []).length
       ? (req?.content.services ?? [])
           .filter((service) => hasValue(service.name))
           .map((service) => ({ title: service.name, description: service.description, price: service.price }))
-      : offeringServices(offerings),
+      : offeringServices(offerings)
+    ).slice(0, SECTION_ITEM_CAPS.services),
     products: rawProducts
       .filter((product) => hasValue(product.name))
       .map((product) => ({
@@ -260,14 +269,16 @@ export function personalize(context: TemplateContext): PersonalizedContent {
         priceCents: toCents(product.price),
         currency,
         category: product.category,
-      })),
+      }))
+      .slice(0, SECTION_ITEM_CAPS.products),
     testimonials: (req?.content.testimonials ?? [])
       .filter((item) => hasValue(item.quote))
-      .map((item) => ({ quote: item.quote, author: item.author, role: item.role, rating: 5 })),
+      .map((item) => ({ quote: item.quote, author: item.author, role: item.role, rating: 5 }))
+      .slice(0, SECTION_ITEM_CAPS.testimonials),
     faq: groundedFaq(
       (req?.content.faq ?? []).filter((item) => hasValue(item.question)),
       offerings,
-    ),
+    ).slice(0, SECTION_ITEM_CAPS.faqs),
     contact: SiteContactSchema.parse({
       email: req?.content.contact.email || context.contact?.email || "",
       phone: req?.content.contact.phone || context.contact?.phone || "",

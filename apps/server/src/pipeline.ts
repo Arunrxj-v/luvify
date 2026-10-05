@@ -161,11 +161,39 @@ export async function publishProject(
   await fs.rm(directory, { recursive: true, force: true });
   await fs.mkdir(directory, { recursive: true });
 
+  // Client uploads travel with the publication: copy the bytes next to the
+  // site and rewrite `/api/projects/:id/assets/:assetId` references to
+  // `/sites/<slug>/assets/<storageName>`, so the published site renders its
+  // real images without a session or an API round trip.
+  const assetRows = await prisma.projectAsset.findMany({ where: { projectId: project.id } });
+  const assetRewrites = new Map<string, string>();
+  if (assetRows.length > 0) {
+    const assetDir = path.resolve(directory, "assets");
+    await fs.mkdir(assetDir, { recursive: true });
+    for (const row of assetRows) {
+      if (!/^[A-Za-z0-9_-]+$/.test(row.id) || !/^[A-Za-z0-9._-]+$/.test(row.storageName)) continue;
+      const target = path.resolve(assetDir, row.storageName);
+      if (!target.startsWith(assetDir + path.sep)) continue;
+      try {
+        await fs.copyFile(path.resolve(env.uploadsDir, row.projectId, row.storageName), target);
+        assetRewrites.set(row.id, `/sites/${project.slug}/assets/${row.storageName}`);
+      } catch {
+        // Missing bytes are not fatal: the reference stays and the renderer
+        // shows an honest placeholder rather than invented content.
+      }
+    }
+  }
+
   for (const file of exported.files) {
+    let content = file.content;
+    for (const [assetId, replacement] of assetRewrites) {
+      const pattern = new RegExp(`/api/projects/${project.id}/assets/${assetId}(?![A-Za-z0-9_-])`, "g");
+      content = content.replace(pattern, replacement);
+    }
     const target = path.resolve(directory, file.path);
     if (!target.startsWith(directory + path.sep)) continue;
     await fs.mkdir(path.dirname(target), { recursive: true });
-    await fs.writeFile(target, file.content, "utf8");
+    await fs.writeFile(target, content, "utf8");
   }
 
   const url = `${env.publicBaseUrl}/sites/${project.slug}/`;

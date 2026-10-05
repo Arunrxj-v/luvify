@@ -19,6 +19,9 @@ prisma/sqlite/schema.prisma
 # published site snapshots
 .storage/
 
+# uploaded project assets (client-provided logos, photos, menus, documents)
+.uploads/
+
 # editor / os
 .DS_Store
 .idea/

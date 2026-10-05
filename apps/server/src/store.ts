@@ -22,16 +22,19 @@ import type {
 } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 import {
+  ProjectBriefSchema,
   RequirementsSchema,
   SiteDocumentSchema,
   WebsiteSpecificationSchema,
   computeCompleteness,
+  emptyBrief,
   emptyRequirements,
   parseMessagePayload,
   siteContentStats,
   siteThemeSummary,
   slugify,
   type ActivityDto,
+  type BriefResponseDto,
   type BusinessProfileDto,
   type CompletenessDto,
   type CustomerDto,
@@ -40,6 +43,7 @@ import {
   type MessageDto,
   type OrderDto,
   type ProductDto,
+  type ProjectBrief,
   type ProjectDetailDto,
   type ProjectSummaryDto,
   type Requirements,
@@ -54,6 +58,7 @@ import { prisma } from "./prisma";
 export const projectInclude = {
   requirement: true,
   specification: true,
+  brief: true,
   website: true,
   files: { orderBy: { path: "asc" } },
   versions: { orderBy: { versionNumber: "desc" as const } },
@@ -134,6 +139,30 @@ export function documentOf(project: ProjectWithRelations): SiteDocument | null {
   if (parsed === undefined) return null;
   const safe = SiteDocumentSchema.safeParse(parsed);
   return safe.success ? safe.data : null;
+}
+
+export function briefOf(project: ProjectWithRelations): ProjectBrief {
+  const parsed = project.brief ? parseJson(project.brief.data) : undefined;
+  const safe = parsed === undefined ? undefined : ProjectBriefSchema.safeParse(parsed);
+  return safe && safe.success ? safe.data : emptyBrief();
+}
+
+export function toBriefResponse(project: ProjectWithRelations): BriefResponseDto {
+  return {
+    brief: briefOf(project),
+    updatedAt: project.brief ? project.brief.updatedAt.toISOString() : null,
+  };
+}
+
+/** Full replace: the client always PUTs the whole brief it loaded. */
+export async function saveBrief(projectId: string, brief: ProjectBrief): Promise<Date> {
+  const data = JSON.stringify(brief);
+  const row = await prisma.projectBrief.upsert({
+    where: { projectId },
+    create: { projectId, data },
+    update: { data },
+  });
+  return row.updatedAt;
 }
 
 export async function saveRequirements(

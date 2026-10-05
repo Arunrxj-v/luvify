@@ -14,22 +14,27 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import JSZip from "jszip";
 import {
   archetypeLabel,
+  briefChecklist,
+  type AssetDto,
   type CompletenessDto,
   type DeleteProjectResponseDto,
   type ExportResponseDto,
   type HealthResponseDto,
   type MessageDto,
   type PreviewResponseDto,
+  type ProjectBrief,
   type ProjectDetailDto,
   type ProjectSummaryDto,
   type TemplateDto,
 } from "@luvify/shared";
 import { api } from "./api";
+import { getBrief, listAssets } from "./briefApi";
+import { ContentPanel } from "./ContentPanel";
 import { PreviewErrorBoundary } from "./PreviewErrorBoundary";
 import { AppHeader, Banner, useRunner } from "./shell";
 import { ProjectCreateForm } from "./ProjectCreateForm";
 
-type Tab = "chat" | "spec" | "preview" | "files";
+type Tab = "chat" | "content" | "spec" | "preview" | "files";
 
 export function Studio(): JSX.Element {
   const { projectId = "" } = useParams<{ projectId: string }>();
@@ -52,6 +57,11 @@ export function Studio(): JSX.Element {
   const [notice, setNotice] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [summaryText, setSummaryText] = useState("");
+  // The client brief + its uploaded files: loaded atomically with the project
+  // above so the workspace never renders one project's uploads over another
+  // project's brief, not even for a frame.
+  const [brief, setBrief] = useState<ProjectBrief | null>(null);
+  const [assets, setAssets] = useState<AssetDto[]>([]);
   /**
    * True once the id in the URL has been tried and failed - it separates
    * "still opening" from "this project is not yours / not here" so the
@@ -75,15 +85,22 @@ export function Studio(): JSX.Element {
     if (detail.id !== id) {
       throw new Error(`Project isolation violation: requested project "${id}" but received project "${detail.id}"`);
     }
-    const conversation = await api<{ messages: MessageDto[]; completeness: CompletenessDto }>(
-      `/api/projects/${id}/conversation`,
-    );
-    // Commit detail + conversation as one update: the workspace must never
-    // render one project's title over another project's transcript, not even
-    // for a frame while the second request is still in flight.
+    const [conversation, briefResponse, assetList] = await Promise.all([
+      api<{ messages: MessageDto[]; completeness: CompletenessDto }>(
+        `/api/projects/${id}/conversation`,
+      ),
+      getBrief(id),
+      listAssets(id),
+    ]);
+    // Commit detail + conversation + brief + assets as one update: the
+    // workspace must never render one project's title over another project's
+    // transcript or uploads, not even for a frame while a second request is
+    // still in flight.
     setProject(detail);
     setMessages(conversation.messages);
     setCompleteness(conversation.completeness);
+    setBrief(briefResponse.brief);
+    setAssets(assetList.assets);
     setPicked(null);
     setPreview(null);
     // Drafts belong to the project they were typed for: clear them so one
@@ -182,6 +199,18 @@ export function Studio(): JSX.Element {
 
   /** Requirements as stored - the source of the summary and the page plan. */
   const requirements = project?.requirements ?? null;
+
+  /**
+   * Content readiness: what the client supplied (brief fields + uploads)
+   * against what this website type still wants. Drives the pointer block in
+   * the interview's context column - the tab itself recomputes it live.
+   */
+  const checklist = useMemo(() => {
+    if (!brief || !requirements) return null;
+    const counts: Record<string, number> = {};
+    for (const asset of assets) counts[asset.category] = (counts[asset.category] ?? 0) + 1;
+    return briefChecklist(brief, requirements, counts);
+  }, [assets, brief, requirements]);
 
   /**
    * The approved architecture: the requirements plan, else the specification's.
@@ -507,13 +536,21 @@ export function Studio(): JSX.Element {
               </div>
 
               <nav className="tabs">
-                {(["chat", "spec", "preview", "files"] as Tab[]).map((name) => (
+                {(["chat", "content", "spec", "preview", "files"] as Tab[]).map((name) => (
                   <button
                     key={name}
                     className={tab === name ? "tab active" : "tab"}
                     onClick={() => setTab(name)}
                   >
-                    {name === "spec" ? "Specification" : name === "files" ? "Files & export" : name === "chat" ? "Interview" : "Preview"}
+                    {name === "chat"
+                      ? "Interview"
+                      : name === "content"
+                        ? "Content & assets"
+                        : name === "spec"
+                          ? "Specification"
+                          : name === "files"
+                            ? "Files & export"
+                            : "Preview"}
                   </button>
                 ))}
               </nav>
@@ -630,8 +667,44 @@ export function Studio(): JSX.Element {
                       </div>
                     ) : null}
                     {requirementsSection}
+                    {checklist ? (
+                      <section className="brief-nudge">
+                        <span className="req-label">Content &amp; assets</span>
+                        <p className="req-note">
+                          {checklist.ready
+                            ? `All set - ${checklist.provided} details and files provided.`
+                            : checklist.missingLabels.length > 0
+                              ? `${checklist.missing} still missing, e.g. ${checklist.missingLabels
+                                  .slice(0, 2)
+                                  .join(", ")}`
+                              : `${checklist.missing} still missing`}
+                        </p>
+                        <button className="btn" onClick={() => setTab("content")}>
+                          {checklist.ready ? "Review content" : "Open Content & assets"}
+                        </button>
+                      </section>
+                    ) : null}
                   </aside>
                 </div>
+              ) : null}
+
+              {tab === "content" ? (
+                brief && requirements ? (
+                  <ContentPanel
+                    projectId={project.id}
+                    brief={brief}
+                    requirements={requirements}
+                    assets={assets}
+                    runner={runner}
+                    onBriefSaved={setBrief}
+                    onAssetsChanged={setAssets}
+                    notice={setNotice}
+                  />
+                ) : (
+                  <div className="panel">
+                    <p className="muted">Loading content&hellip;</p>
+                  </div>
+                )
               ) : null}
 
               {tab === "spec" ? (

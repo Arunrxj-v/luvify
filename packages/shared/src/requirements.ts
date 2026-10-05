@@ -127,6 +127,20 @@ export const RequirementsSchema = z.object({
       about: text,
       services: z.array(ServiceItemSchema).default([]),
       products: z.array(ProductItemSchema).default([]),
+      /**
+       * Client-provided people (doctors, trainers, stylists, staff). The only
+       * source the Team section may render: without it, template members are
+       * invented people and the validator clears them.
+       */
+      team: z
+        .array(
+          z.object({
+            name: text,
+            role: text,
+            bio: text,
+          }),
+        )
+        .default([]),
       testimonials: z.array(TestimonialItemSchema).default([]),
       faq: z.array(FaqItemSchema).default([]),
       galleryNotes: text,
