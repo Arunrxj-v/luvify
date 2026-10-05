@@ -1,0 +1,1288 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Luvify studio — brag</title>
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/audio-data.js"></script>
+    <style>
+      @font-face {
+        font-family: "Lora";
+        font-style: normal;
+        font-weight: 400;
+        font-display: block;
+        src: url("assets/fonts/lora-latin-400-normal.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Lora";
+        font-style: normal;
+        font-weight: 500;
+        font-display: block;
+        src: url("assets/fonts/lora-latin-500-normal.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Lora";
+        font-style: normal;
+        font-weight: 600;
+        font-display: block;
+        src: url("assets/fonts/lora-latin-600-normal.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Inter";
+        font-style: normal;
+        font-weight: 400;
+        font-display: block;
+        src: url("assets/fonts/inter-latin-400-normal.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Inter";
+        font-style: normal;
+        font-weight: 500;
+        font-display: block;
+        src: url("assets/fonts/inter-latin-500-normal.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Inter";
+        font-style: normal;
+        font-weight: 600;
+        font-display: block;
+        src: url("assets/fonts/inter-latin-600-normal.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Inter";
+        font-style: normal;
+        font-weight: 700;
+        font-display: block;
+        src: url("assets/fonts/inter-latin-700-normal.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: SFMono-Regular;
+        font-style: normal;
+        font-display: block;
+        src: local("SFMono-Regular"), local("SF Mono");
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #f8f5ee;
+        font-family: "Inter", system-ui, sans-serif;
+        color: #29251f;
+        -webkit-font-smoothing: antialiased;
+      }
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #f8f5ee;
+      }
+      .clip {
+        position: absolute;
+        inset: 0;
+      }
+      .inner {
+        position: absolute;
+        inset: 0;
+      }
+
+      /* ---------- persistent atmosphere ---------- */
+      .atmos {
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        overflow: hidden;
+      }
+      .atmos-grid {
+        position: absolute;
+        left: -80px;
+        top: -80px;
+        right: -80px;
+        bottom: -80px;
+        background-image:
+          linear-gradient(to right, rgba(41, 37, 31, 0.055) 2px, transparent 2px),
+          linear-gradient(to bottom, rgba(41, 37, 31, 0.045) 2px, transparent 2px);
+        background-size: 180px 180px;
+      }
+      .atmos-glow {
+        position: absolute;
+        left: -14%;
+        top: -26%;
+        width: 78%;
+        height: 96%;
+        background: radial-gradient(circle at 50% 50%, rgba(211, 67, 24, 0.26), rgba(211, 67, 24, 0) 62%);
+        opacity: 0.75;
+      }
+      .atmos-glow-b {
+        position: absolute;
+        right: -18%;
+        bottom: -34%;
+        width: 70%;
+        height: 92%;
+        background: radial-gradient(circle at 50% 50%, rgba(245, 161, 127, 0.34), rgba(245, 161, 127, 0) 64%);
+        opacity: 0.6;
+      }
+      .atmos-ring {
+        position: absolute;
+        right: -300px;
+        bottom: -340px;
+        width: 940px;
+        height: 940px;
+        border: 2px solid rgba(41, 37, 31, 0.12);
+        border-radius: 50%;
+      }
+      .atmos-ring-b {
+        position: absolute;
+        left: -260px;
+        top: -300px;
+        width: 720px;
+        height: 720px;
+        border: 2px solid rgba(211, 67, 24, 0.16);
+        border-radius: 50%;
+      }
+
+      /* ---------- shared chrome ---------- */
+      .meta {
+        position: absolute;
+        left: 132px;
+        right: 132px;
+        top: 66px;
+        display: flex;
+        justify-content: space-between;
+        font-weight: 600;
+        font-size: 21px;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: #675e52;
+      }
+      .hdr {
+        position: absolute;
+        left: 132px;
+        right: 132px;
+        top: 60px;
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        padding-bottom: 26px;
+        border-bottom: 2px solid #cfc6b8;
+      }
+      .mark {
+        display: grid;
+        place-items: center;
+        width: 56px;
+        height: 56px;
+        background: #d34318;
+        color: #ffffff;
+        border-radius: 4px;
+        font-weight: 700;
+        font-size: 30px;
+        line-height: 1;
+      }
+      .brand-name {
+        font-weight: 700;
+        font-size: 36px;
+        line-height: 1;
+        letter-spacing: -0.025em;
+      }
+      .brand-weak {
+        font-weight: 400;
+        font-size: 21px;
+        color: #675e52;
+        margin-left: 10px;
+      }
+      .status {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-left: 30px;
+      }
+      .dot {
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+        background: #3d674e;
+      }
+      .status-text {
+        font-size: 21px;
+        color: #60594f;
+      }
+      .hdr-spacer {
+        margin-left: auto;
+        font-size: 21px;
+        color: #675e52;
+      }
+      .tabs {
+        position: absolute;
+        left: 132px;
+        right: 132px;
+        top: 156px;
+        display: flex;
+        gap: 40px;
+        border-bottom: 2px solid #cfc6b8;
+      }
+      .tab {
+        position: relative;
+        font-weight: 500;
+        font-size: 25px;
+        line-height: 1;
+        color: #60594f;
+        padding-bottom: 20px;
+      }
+      .tab.active {
+        font-weight: 600;
+        color: #b93610;
+      }
+      .tab.active::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: -2px;
+        height: 5px;
+        background: #d34318;
+      }
+
+      /* ---------- scene 1: the claim ---------- */
+      .veil {
+        position: absolute;
+        inset: 0;
+        background: #14110d;
+      }
+      .push {
+        position: absolute;
+        inset: 0;
+      }
+      .claim {
+        position: absolute;
+        left: 132px;
+        top: 320px;
+        width: 1560px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .kicker {
+        font-weight: 700;
+        font-size: 23px;
+        letter-spacing: 0.3em;
+        text-transform: uppercase;
+        color: #b93610;
+      }
+      .claim-line {
+        margin: 0;
+        font-family: "Lora", Georgia, serif;
+        font-weight: 400;
+        font-size: 132px;
+        line-height: 1.06;
+        letter-spacing: -0.028em;
+        color: #29251f;
+      }
+      .claim-line.accent {
+        color: #d34318;
+      }
+      .claim-rule {
+        width: 560px;
+        height: 5px;
+        background: #29251f;
+        margin-top: 52px;
+        transform-origin: left center;
+      }
+
+      /* ---------- studio workspace (scenes 2-4) ---------- */
+      .q-col {
+        position: absolute;
+        left: 132px;
+        top: 300px;
+        width: 1010px;
+      }
+      .msg-role {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-weight: 600;
+        font-size: 24px;
+        color: #29251f;
+      }
+      .msg-square {
+        width: 13px;
+        height: 13px;
+        background: #d34318;
+      }
+      .question {
+        margin: 26px 0 0;
+        font-family: "Lora", Georgia, serif;
+        font-weight: 400;
+        font-size: 80px;
+        line-height: 1.08;
+        letter-spacing: -0.024em;
+        color: #29251f;
+      }
+      .q-help {
+        margin-top: 24px;
+        font-size: 30px;
+        line-height: 1.5;
+        color: #60594f;
+      }
+      .composer {
+        position: absolute;
+        left: 132px;
+        top: 782px;
+        width: 1010px;
+        display: flex;
+        gap: 18px;
+        align-items: center;
+        padding-top: 28px;
+        border-top: 2px solid #cfc6b8;
+      }
+      .c-input {
+        display: flex;
+        align-items: center;
+        flex: 1 1 auto;
+        height: 98px;
+        padding: 0 30px;
+        background: #ffffff;
+        border: 2px solid #cfc6b8;
+        border-radius: 4px;
+        font-size: 35px;
+        color: #29251f;
+        white-space: nowrap;
+      }
+      .caret {
+        width: 4px;
+        height: 46px;
+        background: #d34318;
+        margin-left: 6px;
+        opacity: 0;
+      }
+      .btn-send {
+        display: grid;
+        place-items: center;
+        height: 98px;
+        padding: 0 46px;
+        background: #d34318;
+        border: none;
+        border-radius: 4px;
+        color: #ffffff;
+        font-weight: 600;
+        font-size: 31px;
+        white-space: nowrap;
+      }
+      .ctx {
+        position: absolute;
+        right: 132px;
+        top: 300px;
+        width: 500px;
+      }
+      .req {
+        background: #ebe5d9;
+        padding: 38px;
+        border-radius: 4px;
+      }
+      .req-head {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+      }
+      .req-label {
+        font-weight: 700;
+        font-size: 31px;
+        line-height: 1.3;
+        color: #29251f;
+      }
+      .stage-wrap {
+        position: relative;
+        height: 30px;
+      }
+      .req-stage {
+        position: absolute;
+        left: 0;
+        top: 0;
+        font-weight: 600;
+        font-size: 23px;
+        line-height: 1.3;
+        color: #b93610;
+        white-space: nowrap;
+      }
+      .req-stage.b {
+        opacity: 0;
+      }
+      .meter {
+        height: 12px;
+        margin-top: 24px;
+        background: #cfc6b8;
+      }
+      .meter-fill {
+        height: 100%;
+        width: 100%;
+        background: #d34318;
+        transform-origin: left center;
+      }
+      .req-note {
+        margin-top: 26px;
+        font-size: 24px;
+        line-height: 1.5;
+        color: #60594f;
+      }
+
+      /* ---------- scene 3: the build ---------- */
+      .p-col {
+        position: absolute;
+        left: 132px;
+        top: 300px;
+        width: 700px;
+      }
+      .p-title {
+        margin: 0;
+        font-family: "Lora", Georgia, serif;
+        font-weight: 400;
+        font-size: 92px;
+        line-height: 1.04;
+        letter-spacing: -0.027em;
+        color: #29251f;
+      }
+      .p-sub {
+        margin-top: 20px;
+        font-size: 26px;
+        color: #71685c;
+      }
+      .actions {
+        position: absolute;
+        left: 132px;
+        top: 520px;
+        width: 700px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+      }
+      .btn {
+        display: grid;
+        place-items: center;
+        height: 86px;
+        padding: 0 32px;
+        background: #fffdf8;
+        border: 2px solid #cfc6b8;
+        border-radius: 4px;
+        font-weight: 600;
+        font-size: 27px;
+        color: #29251f;
+        white-space: nowrap;
+      }
+      .btn.primary {
+        background: #d34318;
+        border-color: #d34318;
+        color: #ffffff;
+      }
+      .spec {
+        position: absolute;
+        right: 132px;
+        top: 300px;
+        width: 820px;
+        background: #fffdf8;
+        border: 2px solid #cfc6b8;
+        border-radius: 4px;
+        padding: 44px;
+      }
+      .spec-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 20px;
+        padding-bottom: 26px;
+        border-bottom: 2px solid #cfc6b8;
+      }
+      .spec-h {
+        margin: 0;
+        font-family: "Lora", Georgia, serif;
+        font-weight: 400;
+        font-size: 42px;
+        line-height: 1.2;
+        color: #29251f;
+      }
+      .tag {
+        font-weight: 700;
+        font-size: 22px;
+        letter-spacing: 0.04em;
+        color: #60594f;
+        background: #ebe5d9;
+        border: 2px solid #cfc6b8;
+        border-radius: 4px;
+        padding: 10px 16px;
+        white-space: nowrap;
+      }
+      .p-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 24px;
+        padding: 27px 0;
+        border-bottom: 2px solid #e4ded3;
+        opacity: 0;
+      }
+      .p-row:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+      }
+      .p-row-name {
+        font-family: "Lora", Georgia, serif;
+        font-weight: 500;
+        font-size: 38px;
+        color: #29251f;
+      }
+      .p-row-path {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 27px;
+        color: #71685c;
+      }
+      .cursor {
+        position: absolute;
+        left: 648px;
+        top: 548px;
+        width: 46px;
+        height: 58px;
+        opacity: 0;
+      }
+      .ripple {
+        position: absolute;
+        left: 590px;
+        top: 492px;
+        width: 180px;
+        height: 180px;
+        border: 4px solid rgba(211, 67, 24, 0.55);
+        border-radius: 50%;
+        opacity: 0;
+      }
+
+      /* ---------- scene 4: the result ---------- */
+      .pv-tabs {
+        position: absolute;
+        left: 132px;
+        top: 286px;
+        display: flex;
+        gap: 14px;
+      }
+      .pv-tab {
+        padding: 16px 28px;
+        background: #fffdf8;
+        border: 2px solid #cfc6b8;
+        border-radius: 4px;
+        font-weight: 500;
+        font-size: 26px;
+        color: #60594f;
+        opacity: 0;
+      }
+      .pv-tab.active {
+        font-weight: 600;
+        color: #b93610;
+        background: #fbe3d7;
+        border-color: #d34318;
+      }
+      .frame {
+        position: absolute;
+        left: 132px;
+        top: 386px;
+        width: 1656px;
+        height: 574px;
+        background: #ffffff;
+        border: 2px solid #cfc6b8;
+        border-radius: 4px;
+        overflow: hidden;
+      }
+      .site-nav {
+        display: flex;
+        align-items: center;
+        gap: 34px;
+        padding: 22px 52px;
+        border-bottom: 2px solid #efe9dd;
+      }
+      .site-logo {
+        font-family: "Lora", Georgia, serif;
+        font-weight: 600;
+        font-size: 31px;
+        color: #29251f;
+      }
+      .site-link {
+        font-size: 24px;
+        color: #60594f;
+      }
+      .site-cta {
+        margin-left: auto;
+        display: grid;
+        place-items: center;
+        height: 56px;
+        padding: 0 26px;
+        background: #b45309;
+        border-radius: 6px;
+        color: #ffffff;
+        font-weight: 600;
+        font-size: 23px;
+      }
+      .hero {
+        display: flex;
+        gap: 52px;
+        padding: 46px 52px;
+      }
+      .hero-copy {
+        width: 960px;
+      }
+      .hero-eyebrow {
+        font-weight: 700;
+        font-size: 20px;
+        letter-spacing: 0.26em;
+        text-transform: uppercase;
+        color: #b45309;
+      }
+      .hero-mask {
+        overflow: hidden;
+        margin-top: 16px;
+      }
+      .hero-h1 {
+        margin: 0;
+        font-family: "Lora", Georgia, serif;
+        font-weight: 500;
+        font-size: 78px;
+        line-height: 1.06;
+        letter-spacing: -0.02em;
+        color: #211d18;
+      }
+      .hero-sub {
+        margin-top: 20px;
+        font-size: 31px;
+        line-height: 1.42;
+        color: #5b544a;
+        opacity: 0;
+      }
+      .hero-btn {
+        display: grid;
+        place-items: center;
+        height: 74px;
+        margin-top: 30px;
+        padding: 0 40px;
+        background: #b45309;
+        border-radius: 6px;
+        color: #ffffff;
+        font-weight: 600;
+        font-size: 29px;
+        opacity: 0;
+      }
+      .hero-art {
+        position: relative;
+        flex: 1 1 auto;
+        background: linear-gradient(155deg, #f5a54a 0%, #d97a12 55%, #b45309 100%);
+        border-radius: 10px;
+        overflow: hidden;
+        opacity: 0;
+      }
+      .art-arc {
+        position: absolute;
+        left: -70px;
+        bottom: -140px;
+        width: 420px;
+        height: 420px;
+        border: 3px solid rgba(255, 255, 255, 0.5);
+        border-radius: 50%;
+      }
+      .art-bar {
+        position: absolute;
+        right: 46px;
+        top: 46px;
+        width: 190px;
+        height: 12px;
+        background: rgba(255, 255, 255, 0.65);
+      }
+      .art-bar.b {
+        top: 76px;
+        width: 130px;
+      }
+
+      /* ---------- scene 5: outro ---------- */
+      .chips {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 196px;
+        display: flex;
+        justify-content: center;
+        gap: 20px;
+      }
+      .chip {
+        display: grid;
+        place-items: center;
+        height: 78px;
+        padding: 0 36px;
+        background: #fffdf8;
+        border: 2px solid #cfc6b8;
+        border-radius: 4px;
+        font-weight: 600;
+        font-size: 28px;
+        color: #29251f;
+        opacity: 0;
+      }
+      .s5-core {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 366px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      .mark-big {
+        display: grid;
+        place-items: center;
+        width: 156px;
+        height: 156px;
+        background: #d34318;
+        color: #ffffff;
+        border-radius: 6px;
+        font-weight: 700;
+        font-size: 88px;
+        line-height: 1;
+        opacity: 0;
+      }
+      .wordmark {
+        margin-top: 40px;
+        font-weight: 700;
+        font-size: 66px;
+        line-height: 1;
+        letter-spacing: -0.025em;
+        color: #29251f;
+        opacity: 0;
+      }
+      .wordmark span {
+        font-weight: 400;
+        font-size: 38px;
+        color: #71685c;
+        margin-left: 14px;
+      }
+      .s5-rule {
+        width: 380px;
+        height: 4px;
+        background: #d34318;
+        margin-top: 36px;
+        opacity: 0;
+        transform-origin: center center;
+      }
+      .tagline {
+        margin-top: 34px;
+        font-family: "Lora", Georgia, serif;
+        font-weight: 400;
+        font-size: 50px;
+        line-height: 1.3;
+        color: #29251f;
+        text-align: center;
+        opacity: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-width="1920"
+      data-height="1080"
+      data-duration="22"
+    >
+      <!-- persistent atmosphere -->
+      <div class="atmos" aria-hidden="true">
+        <div class="atmos-grid" id="atmos-grid"></div>
+        <div class="atmos-glow" id="atmos-glow"></div>
+        <div class="atmos-glow-b" id="atmos-glow-b"></div>
+        <div class="atmos-ring" id="atmos-ring"></div>
+        <div class="atmos-ring-b" id="atmos-ring-b"></div>
+      </div>
+
+      <!-- ============ SCENE 1 — the claim (0 → 4.0) ============ -->
+      <section id="s1" class="clip scene" data-start="0" data-duration="4" style="z-index: 1">
+        <div class="inner" id="s1-inner">
+          <div class="push" id="s1-push">
+            <div class="meta">
+              <span>Luvify studio</span>
+              <span>01 / 05</span>
+            </div>
+            <div class="claim">
+              <div class="kicker" id="s1-kicker">AI website builder</div>
+              <h1 class="claim-line" id="s1-line1">Describe your business.</h1>
+              <h1 class="claim-line accent" id="s1-line2">Get a website.</h1>
+              <div class="claim-rule" id="s1-rule"></div>
+            </div>
+          </div>
+          <div class="veil" id="s1-veil"></div>
+        </div>
+      </section>
+
+      <!-- ============ SCENE 2 — the interview (3.6 → 9.15) ============ -->
+      <section id="s2" class="clip scene" data-start="3.6" data-duration="5.55" style="z-index: 2">
+        <div class="inner" id="s2-inner">
+          <div class="push" id="s2-push">
+            <div class="hdr" id="s2-hdr">
+              <div class="mark">L</div>
+              <div class="brand-name">Luvify<span class="brand-weak">studio</span></div>
+              <div class="status">
+                <span class="dot"></span>
+                <span class="status-text">API connected</span>
+              </div>
+              <div class="hdr-spacer">Harbour Bakery</div>
+            </div>
+
+            <nav class="tabs" id="s2-tabs">
+              <span class="tab active">Interview</span>
+              <span class="tab">Specification</span>
+              <span class="tab">Preview</span>
+              <span class="tab">Files &amp; export</span>
+            </nav>
+
+            <div class="q-col">
+              <div class="msg-role" id="s2-role">
+                <span class="msg-square"></span>
+                Luvify assistant
+              </div>
+              <h2 class="question" id="s2-question">What is your business called?</h2>
+              <p class="q-help" id="s2-help">The name that should appear in the logo and the footer.</p>
+            </div>
+
+            <div class="composer" id="s2-composer">
+              <div class="c-input">
+                <span id="s2-typed"
+                  ><span style="opacity: 0">H</span><span style="opacity: 0">a</span
+                  ><span style="opacity: 0">r</span><span style="opacity: 0">b</span
+                  ><span style="opacity: 0">o</span><span style="opacity: 0">u</span
+                  ><span style="opacity: 0">r</span><span style="opacity: 0">&nbsp;</span
+                  ><span style="opacity: 0">B</span><span style="opacity: 0">a</span
+                  ><span style="opacity: 0">k</span><span style="opacity: 0">e</span
+                  ><span style="opacity: 0">r</span><span style="opacity: 0">y</span></span
+                ><span class="caret" id="s2-caret"></span>
+              </div>
+              <div class="btn-send" id="s2-send">Send</div>
+            </div>
+
+            <div class="ctx">
+              <div class="req" id="s2-req">
+                <div class="req-head">
+                  <div class="req-label" id="s2-req-label">Requirements 42%</div>
+                  <div class="stage-wrap">
+                    <div class="req-stage a" id="s2-stage-a">Discovery</div>
+                    <div class="req-stage b" id="s2-stage-b">Ready to build</div>
+                  </div>
+                </div>
+                <div class="meter"><div class="meter-fill" id="s2-meter"></div></div>
+                <div class="req-note" id="s2-note">
+                  Business, brand and pages answered in the interview. Build unlocks at 100%.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ SCENE 3 — the build (8.74 → 13.51) ============ -->
+      <section id="s3" class="clip scene" data-start="8.74" data-duration="4.77" style="z-index: 3">
+        <div class="inner" id="s3-inner">
+          <div class="push" id="s3-push">
+            <div class="hdr" id="s3-hdr">
+              <div class="mark">L</div>
+              <div class="brand-name">Luvify<span class="brand-weak">studio</span></div>
+              <div class="status">
+                <span class="dot"></span>
+                <span class="status-text">API connected</span>
+              </div>
+              <div class="hdr-spacer">Harbour Bakery</div>
+            </div>
+
+            <nav class="tabs" id="s3-tabs">
+              <span class="tab">Interview</span>
+              <span class="tab active">Specification</span>
+              <span class="tab">Preview</span>
+              <span class="tab">Files &amp; export</span>
+            </nav>
+
+            <div class="p-col">
+              <h2 class="p-title" id="s3-title">Harbour Bakery</h2>
+              <p class="p-sub" id="s3-sub">Harbour Bakery · restaurant · v3</p>
+            </div>
+
+            <div class="actions" id="s3-actions">
+              <div class="btn" id="s3-b1">Generate spec</div>
+              <div class="btn primary" id="s3-b2">Build website</div>
+              <div class="btn" id="s3-b3">Export .zip</div>
+              <div class="btn" id="s3-b4">Publish</div>
+            </div>
+
+            <div class="spec" id="s3-spec">
+              <div class="spec-head">
+                <h3 class="spec-h">Website architecture</h3>
+                <span class="tag">4 pages</span>
+              </div>
+              <div class="p-row" id="s3-r1">
+                <span class="p-row-name">Home</span><span class="p-row-path">/</span>
+              </div>
+              <div class="p-row" id="s3-r2">
+                <span class="p-row-name">Menu</span><span class="p-row-path">/menu</span>
+              </div>
+              <div class="p-row" id="s3-r3">
+                <span class="p-row-name">About</span><span class="p-row-path">/about</span>
+              </div>
+              <div class="p-row" id="s3-r4">
+                <span class="p-row-name">Contact</span><span class="p-row-path">/contact</span>
+              </div>
+            </div>
+
+            <div class="ripple" id="s3-ripple"></div>
+            <svg class="cursor" id="s3-cursor" viewBox="0 0 46 58" xmlns="http://www.w3.org/2000/svg">
+              <path
+                d="M4 2 L4 46 L15 36 L22 52 L30 48 L23 33 L38 32 Z"
+                fill="#29251f"
+                stroke="#fffdf8"
+                stroke-width="3"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ SCENE 4 — the result (13.11 → 18.96) ============ -->
+      <section id="s4" class="clip scene" data-start="13.11" data-duration="5.85" style="z-index: 4">
+        <div class="inner" id="s4-inner">
+          <div class="hdr" id="s4-hdr">
+            <div class="mark">L</div>
+            <div class="brand-name">Luvify<span class="brand-weak">studio</span></div>
+            <div class="status">
+              <span class="dot"></span>
+              <span class="status-text">API connected</span>
+            </div>
+            <div class="hdr-spacer">Harbour Bakery</div>
+          </div>
+
+          <nav class="tabs" id="s4-tabs">
+            <span class="tab">Interview</span>
+            <span class="tab">Specification</span>
+            <span class="tab active">Preview</span>
+            <span class="tab">Files &amp; export</span>
+          </nav>
+
+          <div class="pv-tabs" id="s4-pv-tabs">
+            <span class="pv-tab active" id="s4-pt1">Home</span>
+            <span class="pv-tab" id="s4-pt2">Menu</span>
+            <span class="pv-tab" id="s4-pt3">About</span>
+            <span class="pv-tab" id="s4-pt4">Contact</span>
+          </div>
+
+          <div class="frame" id="s4-frame">
+            <div class="site-nav">
+              <span class="site-logo">Harbour Bakery</span>
+              <span class="site-link">Home</span>
+              <span class="site-link">Menu</span>
+              <span class="site-link">About</span>
+              <span class="site-link">Contact</span>
+              <span class="site-cta">Place a pre-order</span>
+            </div>
+            <div class="hero">
+              <div class="hero-copy">
+                <div class="hero-eyebrow" id="s4-eyebrow">Baked on site every morning</div>
+                <div class="hero-mask">
+                  <h1 class="hero-h1" id="s4-h1">Fresh bread, every morning</h1>
+                </div>
+                <p class="hero-sub" id="s4-sub">
+                  Sourdough, pastries and cakes baked on the harbourside
+                </p>
+                <div class="hero-btn" id="s4-btn">Place a pre-order</div>
+              </div>
+              <div class="hero-art" id="s4-art">
+                <div class="art-arc"></div>
+                <div class="art-bar"></div>
+                <div class="art-bar b"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ SCENE 5 — outro (18.56 → 22) ============ -->
+      <section id="s5" class="clip scene" data-start="18.56" data-duration="3.44" style="z-index: 5">
+        <div class="inner" id="s5-inner">
+          <div class="meta">
+            <span>Luvify studio</span>
+            <span>05 / 05</span>
+          </div>
+
+          <div class="chips">
+            <div class="chip" id="s5-c1">Export .zip</div>
+            <div class="chip" id="s5-c2">Publish</div>
+          </div>
+
+          <div class="s5-core">
+            <div class="mark-big" id="s5-mark">L</div>
+            <div class="wordmark" id="s5-word">Luvify<span>studio</span></div>
+            <div class="s5-rule" id="s5-rule"></div>
+            <div class="tagline" id="s5-tagline">All from the same validated document.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ AUDIO ============ -->
+      <audio
+        id="bg-music"
+        data-start="0"
+        data-duration="22"
+        data-track-index="10"
+        data-volume="0.34"
+        data-automation='{"version":1,"lanes":[{"target":"volume","points":[{"t":0,"v":0},{"t":1.4,"v":0.34},{"t":18.56,"v":0.34},{"t":19.66,"v":0.4},{"t":21.3,"v":0.34},{"t":22,"v":0}]}]}'
+        src="assets/music/happy-beats-business-moves-vol-12-by-ende-dot-app.mp3"
+      ></audio>
+
+      <!-- hook -->
+      <audio
+        id="sfx-hook"
+        data-start="0.3"
+        data-duration="0.19"
+        data-track-index="11"
+        data-volume="0.62"
+        src="assets/sfx/impact/impactSoft_medium_001.ogg"
+      ></audio>
+
+      <!-- typing ticks -->
+      <audio id="sfx-k1" data-start="5.2" data-duration="0.25" data-track-index="12" data-volume="0.32" src="assets/sfx/keyboard/keypress-003.wav"></audio>
+      <audio id="sfx-k2" data-start="5.36" data-duration="0.25" data-track-index="13" data-volume="0.32" src="assets/sfx/keyboard/keypress-014.wav"></audio>
+      <audio id="sfx-k3" data-start="5.52" data-duration="0.25" data-track-index="14" data-volume="0.32" src="assets/sfx/keyboard/keypress-021.wav"></audio>
+      <audio id="sfx-k4" data-start="5.68" data-duration="0.25" data-track-index="15" data-volume="0.32" src="assets/sfx/keyboard/keypress-007.wav"></audio>
+      <audio id="sfx-k5" data-start="5.84" data-duration="0.25" data-track-index="16" data-volume="0.32" src="assets/sfx/keyboard/keypress-026.wav"></audio>
+      <audio id="sfx-k6" data-start="6.0" data-duration="0.25" data-track-index="17" data-volume="0.32" src="assets/sfx/keyboard/keypress-011.wav"></audio>
+      <audio id="sfx-k7" data-start="6.16" data-duration="0.25" data-track-index="18" data-volume="0.32" src="assets/sfx/keyboard/keypress-030.wav"></audio>
+
+      <!-- send + meter stages -->
+      <audio id="sfx-send" data-start="6.36" data-duration="0.06" data-track-index="19" data-volume="0.6" src="assets/sfx/ui/mouseclick1.ogg"></audio>
+      <audio id="sfx-m1" data-start="6.5" data-duration="0.11" data-track-index="20" data-volume="0.42" src="assets/sfx/interface/drop_001.ogg"></audio>
+      <audio id="sfx-m2" data-start="7.03" data-duration="0.19" data-track-index="21" data-volume="0.42" src="assets/sfx/interface/drop_002.ogg"></audio>
+      <audio id="sfx-m3" data-start="7.58" data-duration="0.11" data-track-index="22" data-volume="0.46" src="assets/sfx/interface/drop_001.ogg"></audio>
+
+      <!-- build press -->
+      <audio id="sfx-build" data-start="9.49" data-duration="0.1" data-track-index="23" data-volume="0.66" src="assets/sfx/interface/click_001.ogg"></audio>
+
+      <!-- page rows -->
+      <audio id="sfx-row1" data-start="9.77" data-duration="0.11" data-track-index="24" data-volume="0.44" src="assets/sfx/interface/drop_001.ogg"></audio>
+      <audio id="sfx-row2" data-start="10.31" data-duration="0.19" data-track-index="25" data-volume="0.4" src="assets/sfx/interface/drop_002.ogg"></audio>
+      <audio id="sfx-row3" data-start="10.87" data-duration="0.19" data-track-index="26" data-volume="0.4" src="assets/sfx/interface/drop_002.ogg"></audio>
+      <audio id="sfx-row4" data-start="11.4" data-duration="0.69" data-track-index="27" data-volume="0.46" src="assets/sfx/casino/card-place-1.ogg"></audio>
+
+      <!-- preview reveal -->
+      <audio id="sfx-reveal" data-start="13.05" data-duration="1.48" data-track-index="28" data-volume="0.72" src="assets/sfx/impact/impactBell_heavy_000.ogg"></audio>
+
+      <!-- outro chips + logo -->
+      <audio id="sfx-chip1" data-start="19.04" data-duration="0.1" data-track-index="29" data-volume="0.5" src="assets/sfx/interface/click_001.ogg"></audio>
+      <audio id="sfx-chip2" data-start="19.29" data-duration="0.1" data-track-index="30" data-volume="0.5" src="assets/sfx/interface/click_001.ogg"></audio>
+      <audio id="sfx-logo" data-start="19.6" data-duration="0.66" data-track-index="31" data-volume="0.78" src="assets/sfx/impact/impactBell_heavy_003.ogg"></audio>
+    </div>
+
+    <script>
+      (function () {
+        var tl = gsap.timeline({ paused: true });
+
+        /* ---------- ambient: persistent atmosphere ---------- */
+        tl.fromTo("#atmos-glow", { scale: 1 }, { scale: 1.07, duration: 22, ease: "sine.inOut" }, 0);
+        tl.fromTo("#atmos-glow-b", { scale: 1.06 }, { scale: 1, duration: 22, ease: "sine.inOut" }, 0);
+        tl.fromTo("#atmos-ring", { rotation: 0 }, { rotation: 16, duration: 22, ease: "none" }, 0);
+        tl.fromTo("#atmos-ring-b", { rotation: 0 }, { rotation: -14, duration: 22, ease: "none" }, 0);
+        tl.fromTo("#atmos-grid", { x: 0, y: 0 }, { x: -46, y: -28, duration: 22, ease: "none" }, 0);
+
+        /* ---------- scene 1 — the claim ---------- */
+        tl.fromTo("#s1-veil", { opacity: 0.95 }, { opacity: 0, duration: 1.1, ease: "power2.out" }, 0);
+        tl.fromTo("#s1-push", { scale: 1 }, { scale: 1.045, duration: 4, ease: "none" }, 0);
+        tl.fromTo(
+          "#s1-kicker",
+          { opacity: 0, y: 16 },
+          { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" },
+          0.5
+        );
+        tl.fromTo(
+          "#s1-line1",
+          { opacity: 0, y: 46, scale: 0.97 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.55, ease: "power4.out" },
+          0.95
+        );
+        tl.fromTo(
+          "#s1-line2",
+          { opacity: 0, y: 46, scale: 0.97 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.55, ease: "power4.out" },
+          1.75
+        );
+        tl.fromTo("#s1-rule", { scaleX: 0 }, { scaleX: 1, duration: 0.7, ease: "power3.inOut" }, 2.5);
+        tl.to("#s1-inner", { opacity: 0, duration: 0.38, ease: "power2.in" }, 3.6);
+
+        /* ---------- scene 2 — the interview ---------- */
+        tl.fromTo("#s2-inner", { opacity: 0 }, { opacity: 1, duration: 0.38, ease: "power2.out" }, 3.6);
+        tl.fromTo("#s2-push", { scale: 1 }, { scale: 1.03, duration: 5.55, ease: "none" }, 3.6);
+        tl.fromTo("#s2-hdr", { opacity: 0, y: -34 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 3.72);
+        tl.fromTo(
+          "#s2-tabs .tab",
+          { opacity: 0, y: -16 },
+          { opacity: 1, y: 0, duration: 0.4, stagger: 0.05, ease: "power3.out" },
+          3.95
+        );
+        tl.fromTo("#s2-req", { opacity: 0, y: 26 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 4.0);
+        tl.fromTo("#s2-role", { opacity: 0, x: -22 }, { opacity: 1, x: 0, duration: 0.45, ease: "power3.out" }, 4.1);
+        tl.fromTo(
+          "#s2-question",
+          { opacity: 0, y: 48, scale: 0.98 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.6, ease: "power4.out" },
+          4.2
+        );
+        tl.fromTo("#s2-help", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 4.62);
+        tl.fromTo("#s2-composer", { opacity: 0, y: 26 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 4.9);
+
+        /* typed answer — one zero-duration set per character (seek-safe) */
+        var typedChars = document.querySelectorAll("#s2-typed > span");
+        for (var i = 0; i < typedChars.length; i++) {
+          tl.set(typedChars[i], { opacity: 1 }, 5.2 + i * 0.0786);
+        }
+        /* caret blink while composing */
+        var caretTimes = [4.95, 5.15, 5.35, 5.55, 5.75, 5.95, 6.15, 6.3];
+        for (var c = 0; c < caretTimes.length; c++) {
+          tl.set("#s2-caret", { opacity: c % 2 === 0 ? 1 : 0 }, caretTimes[c]);
+        }
+        tl.set("#s2-caret", { opacity: 0 }, 6.5);
+
+        /* send press */
+        tl.fromTo("#s2-send", { scale: 1 }, { scale: 0.93, duration: 0.1, ease: "power2.in" }, 6.36);
+        tl.to("#s2-send", { scale: 1, duration: 0.2, ease: "back.out(2.4)" }, 6.46);
+
+        /* requirements meter 42 → 100 */
+        tl.fromTo("#s2-meter", { scaleX: 0.42 }, { scaleX: 1, duration: 1.3, ease: "power2.inOut" }, 6.5);
+        var meterState = { v: 42 };
+        tl.to(
+          meterState,
+          {
+            v: 100,
+            duration: 1.3,
+            ease: "power2.inOut",
+            onUpdate: function () {
+              document.getElementById("s2-req-label").textContent =
+                "Requirements " + Math.round(meterState.v) + "%";
+            },
+          },
+          6.5
+        );
+        tl.set("#s2-stage-a", { opacity: 0 }, 7.58);
+        tl.fromTo("#s2-stage-b", { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.3, ease: "power3.out" }, 7.58);
+        tl.to("#s2-inner", { opacity: 0, duration: 0.38, ease: "power2.in" }, 8.74);
+
+        /* ---------- scene 3 — the build ---------- */
+        tl.fromTo("#s3-inner", { opacity: 0 }, { opacity: 1, duration: 0.38, ease: "power2.out" }, 8.74);
+        tl.fromTo("#s3-push", { scale: 1 }, { scale: 1.03, duration: 4.77, ease: "none" }, 8.74);
+        tl.fromTo("#s3-hdr", { opacity: 0, y: -34 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 8.85);
+        tl.fromTo(
+          "#s3-tabs .tab",
+          { opacity: 0, y: -16 },
+          { opacity: 1, y: 0, duration: 0.4, stagger: 0.05, ease: "power3.out" },
+          9.05
+        );
+        tl.fromTo("#s3-title", { opacity: 0, y: 44 }, { opacity: 1, y: 0, duration: 0.55, ease: "power4.out" }, 9.15);
+        tl.fromTo("#s3-sub", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 9.4);
+        tl.fromTo(
+          "#s3-actions .btn",
+          { opacity: 0, y: 26 },
+          { opacity: 1, y: 0, duration: 0.45, stagger: 0.07, ease: "power3.out" },
+          9.5
+        );
+        tl.fromTo("#s3-spec", { opacity: 0, y: 34 }, { opacity: 1, y: 0, duration: 0.55, ease: "power3.out" }, 9.45);
+
+        /* cursor travels to Build website, then presses */
+        tl.fromTo("#s3-cursor", { opacity: 0 }, { opacity: 1, duration: 0.25, ease: "power2.out" }, 9.15);
+        tl.fromTo("#s3-cursor", { x: 300, y: 260 }, { x: 0, y: 0, duration: 0.42, ease: "power2.inOut", immediateRender: false }, 9.15);
+        tl.fromTo("#s3-cursor", { scale: 1 }, { scale: 0.86, duration: 0.09, ease: "power2.in", immediateRender: false }, 9.49);
+        tl.to("#s3-cursor", { scale: 1, duration: 0.2, ease: "back.out(2.6)" }, 9.58);
+        tl.fromTo("#s3-b2", { scale: 1 }, { scale: 0.96, duration: 0.09, ease: "power2.in" }, 9.49);
+        tl.to("#s3-b2", { scale: 1, duration: 0.22, ease: "back.out(2.4)" }, 9.58);
+        tl.fromTo(
+          "#s3-ripple",
+          { opacity: 0.75, scale: 0.4 },
+          { opacity: 0, scale: 1.25, duration: 0.6, ease: "power2.out" },
+          9.5
+        );
+        tl.to("#s3-cursor", { opacity: 0, duration: 0.35, ease: "power2.in" }, 11.9);
+
+        /* page plan rows — beat-grid arrivals */
+        tl.fromTo("#s3-r1", { opacity: 0, x: -30 }, { opacity: 1, x: 0, duration: 0.45, ease: "power3.out" }, 9.83);
+        tl.fromTo("#s3-r2", { opacity: 0, x: -30 }, { opacity: 1, x: 0, duration: 0.45, ease: "power3.out" }, 10.37);
+        tl.fromTo("#s3-r3", { opacity: 0, x: -30 }, { opacity: 1, x: 0, duration: 0.45, ease: "power3.out" }, 10.93);
+        tl.fromTo("#s3-r4", { opacity: 0, x: -30 }, { opacity: 1, x: 0, duration: 0.45, ease: "power3.out" }, 11.46);
+        tl.to("#s3-inner", { opacity: 0, duration: 0.38, ease: "power2.in" }, 13.11);
+
+        /* ---------- scene 4 — the result ---------- */
+        tl.fromTo("#s4-inner", { opacity: 0 }, { opacity: 1, duration: 0.38, ease: "power2.out" }, 13.11);
+        tl.fromTo("#s4-hdr", { opacity: 0, y: -34 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 13.2);
+        tl.fromTo(
+          "#s4-tabs .tab",
+          { opacity: 0, y: -16 },
+          { opacity: 1, y: 0, duration: 0.4, stagger: 0.05, ease: "power3.out" },
+          13.4
+        );
+        tl.fromTo(
+          "#s4-frame",
+          { opacity: 0, y: 44, scale: 0.965 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.7, ease: "power4.out" },
+          13.11
+        );
+        tl.fromTo(
+          "#s4-pv-tabs .pv-tab",
+          { opacity: 0, y: 16 },
+          { opacity: 1, y: 0, duration: 0.4, stagger: 0.06, ease: "power3.out" },
+          13.5
+        );
+        tl.fromTo("#s4-eyebrow", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.4, ease: "power3.out" }, 13.75);
+        tl.fromTo("#s4-h1", { yPercent: 118 }, { yPercent: 0, duration: 0.75, ease: "power4.out" }, 13.75);
+        tl.fromTo("#s4-sub", { opacity: 0, y: 26 }, { opacity: 1, y: 0, duration: 0.55, ease: "power3.out" }, 14.3);
+        tl.fromTo("#s4-btn", { opacity: 0, y: 24, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, duration: 0.5, ease: "back.out(1.8)" }, 14.9);
+        tl.fromTo("#s4-art", { opacity: 0, x: 46 }, { opacity: 1, x: 0, duration: 0.7, ease: "power3.out" }, 13.9);
+        tl.to("#s4-frame", { scale: 1.05, duration: 4.8, ease: "none" }, 14.15);
+        tl.to("#s4-inner", { opacity: 0, duration: 0.38, ease: "power2.in" }, 18.56);
+
+        /* ---------- scene 5 — outro ---------- */
+        tl.fromTo("#s5-inner", { opacity: 0 }, { opacity: 1, duration: 0.38, ease: "power2.out" }, 18.56);
+        tl.fromTo("#s5-c1", { opacity: 0, y: 22, scale: 0.9 }, { opacity: 1, y: 0, scale: 1, duration: 0.38, ease: "back.out(2)" }, 18.65);
+        tl.fromTo("#s5-c2", { opacity: 0, y: 22, scale: 0.9 }, { opacity: 1, y: 0, scale: 1, duration: 0.4, ease: "back.out(2)" }, 18.77);
+        tl.to("#s5-c1", { scale: 0.94, duration: 0.1, ease: "power2.in" }, 19.04);
+        tl.to("#s5-c1", { scale: 1, duration: 0.2, ease: "back.out(2.4)" }, 19.14);
+        tl.to("#s5-c2", { scale: 0.94, duration: 0.1, ease: "power2.in" }, 19.29);
+        tl.to("#s5-c2", { scale: 1, duration: 0.2, ease: "back.out(2.4)" }, 19.39);
+        tl.to(".chips", { opacity: 0, duration: 0.2, ease: "power2.in" }, 19.45);
+
+        tl.fromTo(
+          "#s5-mark",
+          { opacity: 0, scale: 0.76 },
+          { opacity: 1, scale: 1, duration: 0.5, ease: "power4.out" },
+          19.66
+        );
+        tl.fromTo("#s5-word", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 19.78);
+        tl.fromTo("#s5-tagline", { opacity: 0, y: 28 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 19.82);
+        tl.fromTo("#s5-rule", { opacity: 0, scaleX: 0 }, { opacity: 1, scaleX: 1, duration: 0.7, ease: "power3.inOut" }, 20.4);
+
+        /* audio-reactive: background warmth breathes with the bed */
+        if (window.__AUDIO_DATA && window.__AUDIO_DATA.frames) {
+          var AD = window.__AUDIO_DATA;
+          for (var f = 0; f < AD.totalFrames; f++) {
+            tl.call(
+              (function (frame) {
+                return function () {
+                  var band = frame.bands[0] || 0;
+                  var mid = frame.bands[5] || 0;
+                  var g = document.getElementById("atmos-glow");
+                  var gb = document.getElementById("atmos-glow-b");
+                  if (g) g.style.opacity = String(0.58 + band * 0.34);
+                  if (gb) gb.style.opacity = String(0.46 + mid * 0.3);
+                };
+              })(AD.frames[f]),
+              [],
+              f / AD.fps
+            );
+          }
+        }
+
+        window.__timelines["main"] = tl;
+      })();
+    </script>
+  </body>
+</html>
