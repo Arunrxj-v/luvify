@@ -5,6 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Luvify - describe your business, get a website." />
     <title>Luvify - AI website builder</title>
+    <script>
+      // Apply the stored light/dark preference before anything paints, so a
+      // refresh in dark mode never flashes the light canvas. Kept in sync with
+      // src/theme.ts (same key, same default: light).
+      (function () {
+        var theme = "light";
+        try {
+          if (window.localStorage.getItem("luvify.theme") === "dark") theme = "dark";
+        } catch (error) {
+          /* storage unavailable - keep the default */
+        }
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

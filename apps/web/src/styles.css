@@ -35,11 +35,78 @@
   --success: #3d674e;
   --warning: #876019;
   --error: #ad3327;
+  --error-border: #efc9c2;
+  --error-border-strong: #e0b3ab;
+
+  /* Content on saturated fills (brand tiles, primary buttons) */
+  --on-brand: #ffffff;
+
+  /* Strong neutral button: a solid ink plate that inverts with the theme */
+  --ink-bg: #29251f;
+  --ink-fg: #f7f5ef;
+  --ink-bg-hover: #3d372f;
+  --ink-bg-active: #17140f;
+
+  /* Modal overlay */
+  --scrim: rgba(41, 37, 31, 0.45);
 
   /* Type */
   --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --serif: "Lora", ui-serif, Georgia, "Times New Roman", serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* ==========================================================================
+   Dark theme - the same token map at night, not an inversion of it:
+   charcoal-green canvas, warm off-white ink, muted gray-green secondaries,
+   subtle gray-green lines, and the identical orange-red accent so the
+   brand reads as the same product. Every rule below consumes these tokens,
+   so no component needs a dark-specific override - flipping [data-theme]
+   retints the entire application, auth screens and modals included.
+   ========================================================================== */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Brand - unchanged: the accent must stay recognizable in both themes */
+  --brand: #d34318;
+  --brand-accent: #f5a17f;
+  --on-brand: #ffffff;
+
+  /* Surfaces - charcoal green, each layer one step lighter than the last */
+  --bg: #141815;
+  --surface: #1a201b;
+  --surface-2: #212823;
+  --surface-3: #29302a;
+  --selection: #2e211a;
+  --error-surface: #2b1e1b;
+
+  /* Text - warm off-white primary, gray-green secondaries */
+  --text: #f1ede4;
+  --text-2: #a9b2a6;
+  --text-3: #8d968b;
+  --text-off: #6e766d;
+
+  /* Lines & states - hover lifts, active presses (dark-mode direction) */
+  --border: #373f37;
+  --state-hover: #e4551f;
+  --state-active: #b3380f;
+  --state-disabled: #2b322c;
+
+  /* Feedback - lifted so status text keeps its contrast on the dark canvas */
+  --success: #6fa184;
+  --warning: #d6a249;
+  --error: #df7264;
+  --error-border: #5a3730;
+  --error-border-strong: #74463d;
+
+  /* Ink button - the plate inverts: light card, dark ink, same hierarchy */
+  --ink-bg: #efeae0;
+  --ink-fg: #171512;
+  --ink-bg-hover: #f7f4ec;
+  --ink-bg-active: #dbd5c8;
+
+  /* Modal overlay */
+  --scrim: rgba(0, 0, 0, 0.62);
 }
 
 *,
@@ -93,6 +160,7 @@ textarea {
 
 ::selection {
   background: var(--selection);
+  color: var(--text);
 }
 
 :focus-visible {
@@ -152,7 +220,7 @@ select:focus-visible {
   width: 40px;
   height: 40px;
   background: var(--brand);
-  color: #ffffff;
+  color: var(--on-brand);
   border-radius: 3px;
   font: 700 20px/1 var(--sans);
 }
@@ -299,6 +367,33 @@ select:focus-visible {
   animation: lv-spin 0.7s linear infinite;
 }
 
+/* Light/dark switch: a quiet bordered icon button that matches .btn's radius
+   and hover language. The global :focus-visible outline gives it the brand
+   focus ring, and the icon inherits the current theme through currentColor. */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-2);
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease;
+}
+
+.theme-toggle:hover {
+  background: var(--selection);
+  color: var(--text);
+}
+
 .sign-out.is-loading {
   display: inline-flex;
   align-items: center;
@@ -324,7 +419,7 @@ select:focus-visible {
 
 .banner.error {
   background: var(--error-surface);
-  border-bottom-color: #efc9c2;
+  border-bottom-color: var(--error-border);
   color: var(--error);
 }
 
@@ -341,7 +436,7 @@ select:focus-visible {
 
 .banner.error .banner-retry {
   color: var(--error);
-  border-color: #e0b3ab;
+  border-color: var(--error-border-strong);
 }
 
 .banner-retry:hover {
@@ -737,7 +832,7 @@ select:focus-visible {
 .btn.primary {
   background: var(--brand);
   border-color: var(--brand);
-  color: #ffffff;
+  color: var(--on-brand);
 }
 
 .btn.primary:hover:not(:disabled) {
@@ -763,19 +858,19 @@ select:focus-visible {
 }
 
 .btn.ink {
-  background: var(--text);
-  border-color: var(--text);
-  color: #f7f5ef;
+  background: var(--ink-bg);
+  border-color: var(--ink-bg);
+  color: var(--ink-fg);
 }
 
 .btn.ink:hover:not(:disabled) {
-  background: #3d372f;
-  border-color: #3d372f;
+  background: var(--ink-bg-hover);
+  border-color: var(--ink-bg-hover);
 }
 
 .btn.ink:active:not(:disabled) {
-  background: #17140f;
-  border-color: #17140f;
+  background: var(--ink-bg-active);
+  border-color: var(--ink-bg-active);
 }
 
 .btn.danger {
@@ -799,7 +894,7 @@ select:focus-visible {
   width: 100%;
   background: var(--brand);
   border-color: var(--brand);
-  color: #ffffff;
+  color: var(--on-brand);
 }
 
 .btn.ink.auth-submit:hover:not(:disabled) {
@@ -1352,6 +1447,9 @@ select:focus-visible {
   border-bottom: 1px solid var(--border);
 }
 
+/* The preview canvas deliberately stays white in both themes: it frames the
+   generated website, which has its own colors and is not part of the Luvify
+   chrome being themed. */
 .preview-frame {
   display: block;
   width: 100%;
@@ -1363,7 +1461,7 @@ select:focus-visible {
 .preview-error {
   padding: 24px;
   background: var(--error-surface);
-  border: 1px solid #efc9c2;
+  border: 1px solid var(--error-border);
   border-radius: 3px;
 }
 
@@ -1433,7 +1531,7 @@ select:focus-visible {
   display: grid;
   place-items: center;
   padding: 20px;
-  background: rgba(41, 37, 31, 0.45);
+  background: var(--scrim);
 }
 
 .modal {
@@ -1521,7 +1619,7 @@ select:focus-visible {
   position: static;
   margin-bottom: 24px;
   padding: 12px 14px;
-  border: 1px solid #efc9c2;
+  border: 1px solid var(--error-border);
   border-radius: 3px;
   font-size: 14px;
 }
