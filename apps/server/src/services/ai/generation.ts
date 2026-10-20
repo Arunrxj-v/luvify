@@ -39,6 +39,12 @@ export interface AIPipelineInput {
   versionNumber: number;
   specificationVersion: number;
   templateId?: string | null | undefined;
+  /**
+   * Verified facts from the client brief (menus, hours, policies, ...) that
+   * have no structural carrier in `requirements`. Threaded into every
+   * knowledge build so the model can quote them but never invent substitutes.
+   */
+  extraFacts?: string[];
 }
 
 export interface AIPipelineResult {
@@ -75,6 +81,7 @@ export async function generateSiteWithAI(
   const baseKnowledge = buildProjectKnowledge(input.requirements, {
     projectId: project.id,
     archetype: input.requirements.website.archetype,
+    extraFacts: input.extraFacts,
   });
 
   const context: AIProjectContext = {
@@ -130,6 +137,7 @@ export async function generateSiteWithAI(
     archetype: plan.archetype,
     requiredPages: plan.pages.map((page) => page.name),
     userJourneys: plan.userJourneys.map((journey) => ({ goal: journey.goal, steps: journey.steps })),
+    extraFacts: input.extraFacts,
   });
   context.knowledge = knowledge;
 
@@ -140,6 +148,7 @@ export async function generateSiteWithAI(
     requirements,
     provider: provider.name,
     version: input.specificationVersion,
+    extraFacts: input.extraFacts,
   });
 
   // ---- Step 4: renderer-valid skeleton, then AI copy per page -------------

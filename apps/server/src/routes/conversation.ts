@@ -12,12 +12,14 @@ import {
   applyAnswer,
   applyClientCorrections,
   archetypeLabel,
+  briefKnownFacts,
   buildProjectKnowledge,
   computeCompleteness,
   deriveProductSummary,
   detectChangeRequest,
   detectOfferings,
   extractRequirementsFromText,
+  foldBrief,
   mergeRequirements,
   type ChatResponseDto,
   type MessagePayload,
@@ -38,6 +40,7 @@ import {
 import { completenessSnapshot, nextQuestion } from "../interview";
 import { prisma } from "../prisma";
 import {
+  briefOf,
   ensureConversation,
   loadProject,
   requirementsOf,
@@ -307,10 +310,17 @@ async function runChat(projectId: string, userId: string, input: ChatInput): Pro
     Object.assign(patch, extractRequirementsFromText(text, requirements));
 
     // REAL AI PATH: the model extracts the structured requirement update from
-    // the client's message, scoped to this project's knowledge only.
+    // the client's message, scoped to this project's knowledge only. The
+    // brief is folded in so the model knows what the client already supplied
+    // (menus, hours, contact details) and never asks for it twice.
     let correctionText = text;
     if (aiIsEnabled()) {
-      const knowledge = buildProjectKnowledge(requirements, { projectId: project.id });
+      const brief = briefOf(project);
+      const view = foldBrief(requirements, brief);
+      const knowledge = buildProjectKnowledge(view, {
+        projectId: project.id,
+        extraFacts: briefKnownFacts(brief, view),
+      });
       const update = await runAI(() =>
         extractRequirements(
           getAIProvider(),
@@ -394,6 +404,14 @@ async function runChat(projectId: string, userId: string, input: ChatInput): Pro
     // REAL AI PATH: the reply is composed by the model from this project's
     // knowledge; the deterministic composer remains the offline fallback path
     // only when the mock provider is explicitly selected.
+    const replyKnowledge = (() => {
+      const brief = briefOf(project);
+      const view = foldBrief(requirements, brief);
+      return buildProjectKnowledge(view, {
+        projectId: project.id,
+        extraFacts: briefKnownFacts(brief, view),
+      });
+    })();
     const content = aiIsEnabled()
       ? await runAI(() =>
           composeChatReply(
@@ -402,7 +420,7 @@ async function runChat(projectId: string, userId: string, input: ChatInput): Pro
               projectId: project.id,
               siteName: project.businessName || project.name,
               websiteType: project.websiteType,
-              knowledge: buildProjectKnowledge(requirements, { projectId: project.id }),
+              knowledge: replyKnowledge,
             },
             {
               userMessage: text,

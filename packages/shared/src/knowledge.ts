@@ -46,6 +46,10 @@ export const ProjectKnowledgeSchema = z.object({
   services: z
     .array(z.object({ name: text, description: text, price: text }))
     .default([]),
+  /** Client-provided people - the only source Team sections may render. */
+  team: z
+    .array(z.object({ name: text, role: text, bio: text }))
+    .default([]),
   /** Short client-grounded offering phrases ("oversized T-shirts"). */
   offerings: z.array(z.string()).default([]),
   features: z.array(z.string()).default([]),
@@ -120,6 +124,12 @@ export interface KnowledgeBuildOptions {
   archetype?: string;
   requiredPages?: string[];
   userJourneys?: Array<{ goal: string; steps: string[] }>;
+  /**
+   * Additional verified facts (the client brief's unmapped values) appended to
+   * `knownFacts` - grounded in client input, so they obey the same no-
+   * fabrication rules as everything else here.
+   */
+  extraFacts?: string[];
 }
 
 function pushUnique(target: string[], value: string): void {
@@ -154,6 +164,13 @@ export function buildProjectKnowledge(
       name: service.name.trim(),
       description: service.description.trim(),
       price: service.price.trim(),
+    }));
+  const team = content.team
+    .filter((member) => hasValue(member.name))
+    .map((member) => ({
+      name: member.name.trim(),
+      role: member.role.trim(),
+      bio: member.bio.trim(),
     }));
   const offerings = business.offerings.map((offering) => offering.trim()).filter(Boolean);
   const testimonials = content.testimonials
@@ -224,6 +241,11 @@ export function buildProjectKnowledge(
   for (const service of services) {
     knownFacts.push(`Service: ${service.name}${service.price ? ` (${service.price})` : ""}`);
   }
+  for (const member of team) {
+    knownFacts.push(`Team member: ${member.name}${member.role ? ` - ${member.role}` : ""}`);
+  }
+  // Verified extras from the client brief (unmapped brief fields, ...).
+  for (const extra of options.extraFacts ?? []) pushUnique(knownFacts, extra);
   fact(hasValue(business.targetAudience), `Audience: ${business.targetAudience.trim()}`);
   fact(hasValue(business.location), `Location: ${business.location.trim()}`);
   fact(hasValue(business.valueProposition), `Value proposition: ${business.valueProposition.trim()}`);
@@ -257,8 +279,11 @@ export function buildProjectKnowledge(
   unknown(false, "company history/founding year");
   unknown(false, "customer counts/statistics");
   unknown(false, "awards/certifications");
-  unknown(false, "team members");
-  unknown(false, "social media accounts");
+  unknown(team.length === 0, "team members");
+  unknown(
+    !Object.values(content.socials).some((value) => hasValue(value)),
+    "social media accounts",
+  );
   unknown(hasValue(requirements.ecommerce.shipping.notes) || shippingRegions.length > 0, "shipping/delivery policy");
   unknown(hasValue(policies.returns), "returns policy");
 
@@ -278,6 +303,7 @@ export function buildProjectKnowledge(
     problem: requirements.website.purpose.trim(),
     products,
     services,
+    team,
     offerings,
     features,
     benefits: business.uniqueSellingPoints.map((point) => point.trim()).filter(Boolean),
@@ -380,6 +406,8 @@ export function isSectionAllowed(
 function isTeamRequested(knowledge: ProjectKnowledge): boolean {
   const requested = [...knowledge.requiredPages, ...knowledge.userJourneys.flatMap((journey) => journey.steps)];
   if (requested.some((entry) => entry.trim().toLowerCase() === "team")) return true;
+  // Client-provided people (brief/interview) make the section truthful.
+  if (knowledge.team.length > 0) return true;
   // "About" copy naming real people counts as team information.
   return false;
 }

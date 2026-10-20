@@ -170,6 +170,8 @@ export const env = {
   corsOrigins,
   publicBaseUrl,
   storageDir: path.resolve(repoRoot, str(process.env.STORAGE_DIR, ".storage")),
+  /** Root of uploaded client assets (logos, photos, menus): `UPLOADS_DIR`. */
+  uploadsDir: path.resolve(repoRoot, str(process.env.UPLOADS_DIR, ".uploads")),
   aiProvider,
   /** Model label reported to the UI; the mock provider has no real model. */
   aiModel:

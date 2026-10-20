@@ -8,9 +8,11 @@ import {
   RequirementsSchema,
   applyAnswer,
   applyClientCorrections,
+  briefKnownFacts,
   computeCompleteness,
   deriveProductSummary,
   extractRequirementsFromText,
+  foldBrief,
   mergeRequirements,
   summarizeSpecification,
   type AnalyzeRequirementsResponseDto,
@@ -21,7 +23,7 @@ import { apiHandler, parseWith } from "../errors";
 import { env } from "../env";
 import { buildSpecification, refreshDerivedFields } from "../generate";
 import { prisma } from "../prisma";
-import { loadProject, recordActivity, requirementsOf, saveRequirements, toCompletenessDto } from "../store";
+import { briefOf, loadProject, recordActivity, requirementsOf, saveRequirements, toCompletenessDto } from "../store";
 
 export const projectInsightsRouter = Router({ mergeParams: true });
 
@@ -122,7 +124,10 @@ projectInsightsRouter.post(
   "/:id/specification/generate",
   apiHandler(async (req, res) => {
     const project = await loadProject(req.params.id ?? "", currentUserId(req));
-    const requirements = requirementsOf(project);
+    // Spec context = interview + brief: pages from the approved plan, facts
+    // from both sources. The stored requirements themselves are untouched.
+    const brief = briefOf(project);
+    const requirements = foldBrief(requirementsOf(project), brief);
     const version = (project.specification?.version ?? 0) + 1;
     const specification = buildSpecification({
       siteName: project.businessName || project.name,
@@ -130,6 +135,7 @@ projectInsightsRouter.post(
       requirements,
       provider: env.aiProvider,
       version,
+      extraFacts: briefKnownFacts(brief, requirements),
     });
     const data = JSON.stringify(specification);
     await prisma.websiteSpecification.upsert({

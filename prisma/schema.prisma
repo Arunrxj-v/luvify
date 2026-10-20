@@ -104,6 +104,8 @@ model Project {
   orders          Order[]
   domains         Domain[]
   activities      ProjectActivity[]
+  brief           ProjectBrief?
+  assets          ProjectAsset[]
 
   @@index([userId])
   @@index([status])
@@ -250,6 +252,54 @@ model ProjectActivity {
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Client brief + uploaded assets (the project-scoped content the client
+// supplies so generation can use real prices, menus, photos and logos instead
+// of inventing them.
+// ---------------------------------------------------------------------------
+
+/// Structured business information supplied by the client ("the brief"):
+/// the detected website domain, per-group fields (brand / contact / ...) and
+/// domain-specific collections (menu items, rooms, doctors, ...). Stored as a
+/// Zod-validated JSON string (`ProjectBriefSchema`) - the same portable
+/// pattern the requirements use, since this schema stays PostgreSQL-portable.
+model ProjectBrief {
+  id        String   @id @default(cuid())
+  projectId String   @unique
+  /// JSON encoded ProjectBrief tree
+  data      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+/// One uploaded file. Bytes live under `UPLOADS_DIR/<projectId>/<storageName>`;
+/// `storageName` is server-generated (asset id + sniffed extension), never a
+/// client path. Every read joins on projectId through `loadProject`, so a
+/// session for user A can never fetch user B's asset - foreign ids answer 404.
+model ProjectAsset {
+  id          String   @id @default(cuid())
+  projectId   String
+  /// LOGO | MENU | PHOTO | VIDEO | DOCUMENT | DATA (classifyAsset)
+  kind        String
+  /// Brief asset slot this was uploaded for ("" = unassigned), e.g. "media.hero"
+  category    String   @default("")
+  filename    String
+  contentType String
+  sizeBytes   Int
+  /// Generated basename below the project's upload directory (`<id><ext>`)
+  storageName String
+  /// Alt text for images (falls back to the filename).
+  alt         String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
 }
 
 // ---------------------------------------------------------------------------

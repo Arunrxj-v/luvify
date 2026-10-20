@@ -11,6 +11,8 @@ import {
 import type { MessagePayload } from "./conversation";
 import { RequirementsSchema } from "./requirements";
 import { WebsiteSpecificationSchema } from "./specification";
+import { ProjectBriefSchema, type ProjectBrief } from "./brief";
+import type { AssetKind, DelimitedParse } from "./assets";
 import type { BusinessProfileDto, DomainDto } from "./api-business";
 import type { SiteDocument } from "./site";
 
@@ -210,6 +212,52 @@ export interface AnalyzeRequirementsResponseDto {
   requirements: z.infer<typeof RequirementsSchema>;
   completeness: CompletenessDto;
   updatedFields: string[];
+}
+
+// --- client brief + assets ---------------------------------------------------
+
+/** PUT /api/projects/:id/brief - the whole brief replaces the stored one. */
+export const SaveBriefRequestSchema = ProjectBriefSchema;
+export type SaveBriefRequest = z.infer<typeof SaveBriefRequestSchema>;
+
+/** GET/PUT /api/projects/:id/brief */
+export interface BriefResponseDto {
+  brief: ProjectBrief;
+  updatedAt: string | null;
+}
+
+/** One uploaded, project-scoped asset. */
+export interface AssetDto {
+  id: string;
+  kind: AssetKind;
+  /** Brief slot id ("brand.logo", "media.hero", "" when unassigned). */
+  category: string;
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+  alt: string;
+  /** Absolute URL used inside generated documents and previews. */
+  url: string;
+  createdAt: string;
+}
+
+/** GET /api/projects/:id/assets */
+export interface AssetListResponseDto {
+  assets: AssetDto[];
+}
+
+/** POST /api/projects/:id/assets (raw bytes, metadata via query params). */
+export interface UploadAssetResponseDto {
+  asset: AssetDto;
+  /** Parsed preview for delimited files, so rows can be imported into a list. */
+  parsed?: DelimitedParse;
+}
+
+/** DELETE /api/projects/:id/assets/:assetId */
+export interface DeleteAssetResponseDto {
+  deleted: boolean;
+  /** True when the stored document referenced the asset and was re-rendered. */
+  documentUpdated: boolean;
 }
 
 export const GenerateWebsiteRequestSchema = z.object({
