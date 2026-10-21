@@ -35,6 +35,9 @@ export const ProductEntrySchema = z.object({
   currency: z.string().default("USD"),
   imageUrl: text,
   category: text,
+  sizes: textList,
+  colors: textList,
+  variants: textList,
   badge: text,
   href: text,
 });

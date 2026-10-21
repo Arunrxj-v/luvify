@@ -22,9 +22,19 @@ import {
 } from "@luvify/shared";
 import { applyPageCopy } from "./apply";
 import { buildDocument, buildSpecification } from "../../generate";
+import { env } from "../../env";
 import { AIError } from "./errors";
 import { logAI } from "./logger";
 import { generatePageCopy, planArchitecture, validatePageCopy, type AIProjectContext } from "./operations";
+import {
+  buildGenerationPrompt,
+  buildWebsiteSpecification,
+  GENERATION_PROMPT_VERSION,
+  validateGeneratedDocument,
+  validateWebsiteSpecification,
+  type GenerationAssetInput,
+  type WebsiteGenerationSpecification,
+} from "./prompt-builder";
 import type { AIProvider } from "./provider";
 
 export interface AIPipelineInput {
@@ -45,6 +55,10 @@ export interface AIPipelineInput {
    * knowledge build so the model can quote them but never invent substitutes.
    */
   extraFacts?: string[];
+  /** This project's uploaded assets, described by category (never other projects'). */
+  assets?: GenerationAssetInput[];
+  /** This project's conversation (used only to respect explicit corrections). */
+  conversation?: Array<{ role: string; content: string }>;
 }
 
 export interface AIPipelineResult {
@@ -97,9 +111,24 @@ export async function generateSiteWithAI(
     provider: provider.name,
     model: provider.model,
     websiteType: project.websiteType,
+    promptVersion: GENERATION_PROMPT_VERSION,
   });
 
-  // ---- Step 2: the model decides this project's architecture --------------
+  // ---- Step 2: structured specification BEFORE any website copy -----------
+  // Stage 1 builds the project-specific context the generation model receives.
+  // The preliminary plan is refined by the architecture step below, then the
+  // specification is rebuilt so every page prompt shares the same source.
+  const preliminarySpec = buildWebsiteSpecification({
+    project,
+    requirements: input.requirements,
+    knowledge: baseKnowledge,
+    assets: input.assets,
+    extraFacts: input.extraFacts,
+    conversation: input.conversation,
+  });
+  context.specification = preliminarySpec;
+
+  // ---- Step 3: the model decides this project's architecture --------------
   const plan = await planArchitecture(provider, context, {
     features: Object.entries(input.requirements.features)
       .filter(([, enabled]) => enabled === true)
@@ -141,7 +170,57 @@ export async function generateSiteWithAI(
   });
   context.knowledge = knowledge;
 
-  // ---- Step 3: specification ----------------------------------------------
+  // ---- Step 4: final structured specification ----------------------------
+  const websiteSpec = buildWebsiteSpecification({
+    project,
+    requirements,
+    knowledge,
+    plan: {
+      archetype: plan.archetype,
+      pages: plan.pages,
+      userJourneys: plan.userJourneys,
+    },
+    assets: input.assets,
+    extraFacts: input.extraFacts,
+    conversation: input.conversation,
+  });
+  if (websiteSpec.project.id !== project.id) {
+    throw new AIError(
+      "invalid_output",
+      `Project isolation violation: generation specification belongs to "${websiteSpec.project.id}", not "${project.id}".`,
+    );
+  }
+  const validation = validateWebsiteSpecification(websiteSpec);
+  if (!validation.ok) {
+    throw new AIError(
+      "invalid_output",
+      `Generation specification is incomplete: ${validation.issues.join("; ")}`,
+      { retryable: false },
+    );
+  }
+  context.specification = websiteSpec;
+
+  const generationPrompt = buildGenerationPrompt(websiteSpec);
+  logAI("generation_specification", {
+    operation: "specification",
+    projectId: project.id,
+    provider: provider.name,
+    model: provider.model,
+    promptVersion: websiteSpec.promptVersion,
+    websiteType: websiteSpec.project.websiteType,
+    archetype: websiteSpec.project.archetype,
+    pages: websiteSpec.pages.length,
+    facts: websiteSpec.userProvidedFacts.length,
+    unknowns: websiteSpec.unknowns.length,
+    exclusions: websiteSpec.explicitExclusions.length,
+    assets: websiteSpec.assets.length,
+    promptLength: generationPrompt.length,
+  });
+  if (env.nodeEnv !== "production" && /^(1|true|yes)$/i.test(process.env.AI_DEBUG_PROMPT ?? "")) {
+    console.log(`[AI] generation prompt for project ${project.id}:\n${generationPrompt}`);
+  }
+
+  // ---- Step 5: specification contract for the renderer/spec panel ---------
   const specification = buildSpecification({
     siteName,
     websiteType: project.websiteType,
@@ -149,9 +228,13 @@ export async function generateSiteWithAI(
     provider: provider.name,
     version: input.specificationVersion,
     extraFacts: input.extraFacts,
+    // The AI-approved plan owns generation. Without this, the renderer would
+    // fall back to the older requested-page list and produce a different set
+    // of pages than the specification and navigation describe.
+    requestedPages: websiteSpec.pages.map((page) => page.name),
   });
 
-  // ---- Step 4: renderer-valid skeleton, then AI copy per page -------------
+  // ---- Step 6: renderer-valid skeleton, then AI copy per page -------------
   const skeleton = buildDocument({
     project: {
       name: project.name,
@@ -167,13 +250,32 @@ export async function generateSiteWithAI(
     templateId: input.templateId ?? undefined,
   });
 
-  return writePages(provider, context, {
+  const result = await writePages(provider, context, {
     skeleton,
     requirements,
     specification,
     knowledge,
     projectId: project.id,
   });
+
+  const outputValidation = validateGeneratedDocument(websiteSpec, result.document);
+  if (!outputValidation.ok) {
+    throw new AIError(
+      "invalid_output",
+      `Generated website does not match the approved specification: ${outputValidation.issues.slice(0, 6).join("; ")}`,
+      { retryable: false, detail: outputValidation },
+    );
+  }
+  if (outputValidation.warnings.length > 0) {
+    logAI("output_validation", {
+      operation: "specification",
+      projectId: project.id,
+      provider: provider.name,
+      model: provider.model,
+      warnings: outputValidation.warnings.slice(0, 8),
+    });
+  }
+  return result;
 }
 
 interface WritePagesInput {

@@ -93,15 +93,15 @@ const openrouterModel = str(process.env.OPENROUTER_MODEL, "openai/gpt-4o-mini");
 
 /** Google Gemini - read here and nowhere else, never logged, never prefixed `VITE_`. */
 const geminiApiKey = str(process.env.GOOGLE_GENERATIVE_AI_API_KEY, "");
-/** Primary model. Gemini 3.8 Flash stays the default; a fallback runs one extra cycle (see GEMINI_FALLBACK_MODEL). */
-const geminiModel = str(process.env.GEMINI_MODEL, "gemini-3.8-flash");
+/** Primary model verified by the live pipeline. A fallback runs one extra cycle (see GEMINI_FALLBACK_MODEL). */
+const geminiModel = str(process.env.GEMINI_MODEL, "gemini-3.5-flash-lite");
 /**
  * Optional fallback model for one extra retry cycle after the primary model
  * exhausts its retries on a transient failure (429 / 5xx / network). Empty
  * disables the fallback entirely. Non-transient failures (auth, bad request,
  * missing key) never reach it.
  */
-const geminiFallbackModel = str(process.env.GEMINI_FALLBACK_MODEL, "gemini-3.5-flash-lite");
+const geminiFallbackModel = str(process.env.GEMINI_FALLBACK_MODEL, "gemini-3.1-flash-lite");
 
 // Normalized once so every `=== "production"` / `"development"` check below
 // (boot guard, cookie Secure default, demo-login gate) is case-insensitive.

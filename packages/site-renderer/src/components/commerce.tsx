@@ -9,6 +9,30 @@ import {
   safeImageUrl,
 } from "../primitives";
 
+function ProductOptions({ product }: { product: ProductEntry }) {
+  const groups = [
+    { label: "Sizes", values: product.sizes },
+    { label: "Colours", values: product.colors },
+    { label: "Options", values: product.variants },
+  ].filter((group) => group.values.length > 0);
+  if (groups.length === 0) return null;
+
+  return (
+    <div className="lv-product__options">
+      {groups.map((group) => (
+        <div key={group.label}>
+          <span className="lv-product__option-label">{group.label}</span>
+          <ul className="lv-product__option-list">
+            {group.values.map((value) => (
+              <li className="lv-chip" key={`${group.label}-${value}`}>{value}</li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ProductCard({ product, showCategory }: { product: ProductEntry; showCategory: boolean }) {
   const image = safeImageUrl(product.imageUrl);
   const price = priceLabel(product.priceCents, product.currency);
@@ -23,6 +47,7 @@ function ProductCard({ product, showCategory }: { product: ProductEntry; showCat
         </div>
         <h3>{product.name}</h3>
         {product.description ? <p className="lv-muted">{product.description}</p> : null}
+        <ProductOptions product={product} />
         <div className="lv-row" style={{ justifyContent: "space-between" }}>
           <span className="lv-product__price">{price}</span>
           {product.href ? <ButtonLink href={product.href} label="View" variant="ghost" /> : null}

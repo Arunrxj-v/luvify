@@ -40,6 +40,10 @@ export const ecommerceTemplate: SiteTemplate = {
           priceCents: 0,
           currency: "USD",
           category: "",
+          imageUrl: "",
+          sizes: [],
+          colors: [],
+          variants: [],
         }));
     const categories = Array.from(new Set(products.map((product) => product.category).filter(Boolean)));
 
@@ -136,6 +140,43 @@ export const ecommerceTemplate: SiteTemplate = {
                     { question: "How do I pay?", answer: "Checkout is arranged directly with our team while our online payment provider is being connected - we send a secure payment link with every order confirmation." },
                     { question: "Can I change my order?", answer: "Yes, until dispatch. Email us and we will adjust or cancel with a full refund." },
                   ],
+            }),
+          ],
+        },
+        {
+          name: "Product",
+          path: "/product",
+          title: `Product - ${p.siteName}`,
+          description: products[0]?.name
+            ? `${products[0].name} from ${p.siteName}.`
+            : `Featured product from ${p.siteName}.`,
+          sections: [
+            sec("Navbar", {
+              logoText: p.siteName,
+              links: [
+                { label: "Shop", path: "/shop" },
+                { label: "About", path: "/about" },
+                { label: "Contact", path: "/contact" },
+              ],
+              cta: { label: "Shop all", path: "/shop" },
+            }),
+            products[0]
+              ? sec("ProductCard", {
+                  title: products[0].name,
+                  product: products[0],
+                })
+              : sec("Products", {
+                  eyebrow: "Catalogue",
+                  title: "Products",
+                  subtitle: "Product details will appear here once the catalogue is supplied.",
+                  columns: 3,
+                  items: [],
+                }),
+            sec("CTA", {
+              title: "Questions about this product?",
+              body: "Ask about sizing, fit or delivery before you order.",
+              button: { label: "Contact us", path: "/contact" },
+              variant: "accent",
             }),
           ],
         },

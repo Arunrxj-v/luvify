@@ -112,7 +112,17 @@ export interface PersonalizedContent {
   audience: string;
   about: string[];
   services: Array<{ title: string; description: string; price: string }>;
-  products: Array<{ name: string; description: string; priceCents: number; currency: string; category: string }>;
+  products: Array<{
+    name: string;
+    description: string;
+    priceCents: number;
+    currency: string;
+    category: string;
+    imageUrl: string;
+    sizes: string[];
+    colors: string[];
+    variants: string[];
+  }>;
   testimonials: Array<{ quote: string; author: string; role: string; rating: number }>;
   faq: Array<{ question: string; answer: string }>;
   contact: SiteContact;
@@ -269,6 +279,10 @@ export function personalize(context: TemplateContext): PersonalizedContent {
         priceCents: toCents(product.price),
         currency,
         category: product.category,
+        imageUrl: product.imageUrl,
+        sizes: product.sizes,
+        colors: product.colors,
+        variants: product.variants,
       }))
       .slice(0, SECTION_ITEM_CAPS.products),
     testimonials: (req?.content.testimonials ?? [])

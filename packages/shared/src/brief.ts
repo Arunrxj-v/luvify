@@ -498,6 +498,7 @@ const catalogGroups = (
   collectionId: string,
   csvHeaders: string[],
   categoryLabel: string,
+  extraFields: BriefFieldDef[] = [],
 ): BriefGroupDef[] => [
   {
     id: "catalog-group",
@@ -516,10 +517,17 @@ const catalogGroups = (
           { id: "description", label: "Description", type: "longtext" },
           { id: "price", label: "Price", placeholder: "e.g. ₹1,299" },
           { id: "category", label: categoryLabel },
+          ...extraFields,
         ],
       },
     ],
   },
+];
+
+const productVariantFields: BriefFieldDef[] = [
+  { id: "sizes", label: "Sizes", placeholder: "e.g. XS, S, M, L, XL" },
+  { id: "colors", label: "Colours", placeholder: "e.g. Black, Sand, Olive" },
+  { id: "variants", label: "Other variants", placeholder: "e.g. relaxed fit, crop" },
 ];
 
 const serviceListGroups = (
@@ -545,6 +553,8 @@ const serviceListGroups = (
           { id: "name", label: "Name", required: true },
           { id: "description", label: "Description", type: "longtext" },
           ...(withPrice ? [{ id: "price", label: "Price", placeholder: "e.g. ₹2,000" } as BriefFieldDef] : []),
+          { id: "duration", label: "Duration", placeholder: "e.g. 45 min" },
+          { id: "features", label: "Included features", type: "longtext", placeholder: "One per line" },
         ],
       },
     ],
@@ -556,8 +566,8 @@ export const BRIEF_DOMAINS: BriefDomainDef[] = [
   { id: "hotel", label: "Hotel / stay", keywords: ["hotel", "resort", "hostel", "guesthouse", "guest house", "lodge", "rooms", "stay", "accommodation", "motel", "inn", "villa stay"], groups: hotelGroups },
   { id: "doctor", label: "Doctor / clinic", keywords: ["doctor", "clinic", "physician", "dental", "dentist", "physio", "therapy", "medical", "healthcare", "appointment", "specialist", "surgeon", "pediatric", "practice"], groups: healthcareGroups },
   { id: "hospital", label: "Hospital", keywords: ["hospital", "ward", "emergency", "multi-specialty", "multi specialty", "medical centre", "medical center"], groups: healthcareGroups },
-  { id: "clothing", label: "Clothing / fashion", keywords: ["clothing", "apparel", "fashion", "boutique", "tshirt", "t-shirt", "garments", "dresses", "sneakers", "jewelry", "jewellery", "wear"], groups: catalogGroups("Products", "Product", "products", ["name", "product", "item", "title", "description", "price", "amount", "category", "size", "color"], "Category") },
-  { id: "ecommerce", label: "E-commerce store", keywords: ["store", "shop", "ecommerce", "e-commerce", "sell", "products", "catalog", "catalogue", "retail", "cart", "checkout", "online store"], groups: catalogGroups("Products", "Product", "products", ["name", "product", "item", "title", "description", "price", "amount", "category"], "Category") },
+  { id: "clothing", label: "Clothing / fashion", keywords: ["clothing", "apparel", "fashion", "boutique", "tshirt", "t-shirt", "garments", "dresses", "sneakers", "jewelry", "jewellery", "wear"], groups: catalogGroups("Products", "Product", "products", ["name", "product", "item", "title", "description", "price", "amount", "category", "sizes", "size", "colors", "color", "variants"], "Category", productVariantFields) },
+  { id: "ecommerce", label: "E-commerce store", keywords: ["store", "shop", "ecommerce", "e-commerce", "sell", "products", "catalog", "catalogue", "retail", "cart", "checkout", "online store"], groups: catalogGroups("Products", "Product", "products", ["name", "product", "item", "title", "description", "price", "amount", "category", "variants"], "Category", [{ id: "variants", label: "Variants", placeholder: "e.g. sizes, colours, bundle options" }]) },
   { id: "realestate", label: "Real estate", keywords: ["real estate", "realtor", "property", "properties", "apartment", "villa", "housing", "listings", "brokerage", "plots", "builder"], groups: catalogGroups("Properties", "Property", "properties", ["name", "property", "title", "description", "price", "location", "bedrooms", "bhk", "category"], "Property type") },
   { id: "photographer", label: "Photographer", keywords: ["photographer", "photography", "photoshoot", "photo shoot", "photo studio", "portraits", "wedding photographer", "shoots"], groups: serviceListGroups("Packages", "Package", "packages", ["name", "package", "title", "description", "price", "duration"]) },
   { id: "agency", label: "Agency / studio", keywords: ["agency", "studio", "design", "branding", "marketing", "consultancy", "consulting", "freelance", "creative", "seo", "web design"], groups: [...serviceListGroups("Services", "Service", "services", ["name", "service", "title", "description", "price"]), { id: "work-group", title: "Selected work", collections: [{ id: "caseStudies", title: "Case studies", singular: "Case study", addLabel: "Add case study", csvHeaders: ["name", "title", "client", "description", "result"], fields: [{ id: "name", label: "Project", required: true }, { id: "client", label: "Client" }, { id: "description", label: "Summary", type: "longtext" }] }] }] },
@@ -694,6 +704,13 @@ function byName(existing: Array<{ name: string }>, name: string): boolean {
   return existing.some((entry) => entry.name.trim().toLowerCase() === needle);
 }
 
+function splitBriefList(value: string): string[] {
+  return value
+    .split(/[,;\n]/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
 /** Appends brief collection rows into their requirements carrier (deduplicated). */
 function appendCollection(target: Requirements, def: BriefCollectionDef, items: BriefItem[]): void {
   const value = (item: BriefItem, key: string): string => (item[key] ?? "").trim();
@@ -708,6 +725,10 @@ function appendCollection(target: Requirements, def: BriefCollectionDef, items: 
           description: value(item, "description"),
           price: value(item, "price"),
           category: value(item, "category"),
+          sizes: splitBriefList(value(item, "sizes") || value(item, "size")),
+          colors: splitBriefList(value(item, "colors") || value(item, "color")),
+          variants: splitBriefList(value(item, "variants")),
+          imageUrl: value(item, "imageUrl"),
         });
       }
       return;
@@ -720,6 +741,8 @@ function appendCollection(target: Requirements, def: BriefCollectionDef, items: 
           name,
           description: value(item, "description"),
           price: value(item, "price"),
+          duration: value(item, "duration"),
+          features: splitBriefList(value(item, "features")),
         });
       }
       return;
@@ -838,8 +861,8 @@ export function unfoldBrief(folded: Requirements, base: Requirements): Requireme
 // ---------------------------------------------------------------------------
 
 const CORE_FIELDS: Record<BriefCollectionTarget, string[]> = {
-  products: ["name", "description", "price", "category"],
-  services: ["name", "description", "price"],
+  products: ["name", "description", "price", "category", "sizes", "size", "colors", "color", "variants", "imageUrl"],
+  services: ["name", "description", "price", "duration", "features"],
   team: ["name", "role", "bio"],
   testimonials: ["quote", "author", "role"],
   faq: ["question", "answer"],

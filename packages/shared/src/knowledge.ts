@@ -40,11 +40,20 @@ export const ProjectKnowledgeSchema = z.object({
   /** Exact client concepts - generation must use these, never substitutes. */
   products: z
     .array(
-      z.object({ name: text, description: text, price: text, category: text }),
+      z.object({
+        name: text,
+        description: text,
+        price: text,
+        category: text,
+        sizes: z.array(z.string()).default([]),
+        colors: z.array(z.string()).default([]),
+        variants: z.array(z.string()).default([]),
+        imageUrl: text,
+      }),
     )
     .default([]),
   services: z
-    .array(z.object({ name: text, description: text, price: text }))
+    .array(z.object({ name: text, description: text, price: text, duration: text, features: z.array(z.string()).default([]) }))
     .default([]),
   /** Client-provided people - the only source Team sections may render. */
   team: z
@@ -157,6 +166,10 @@ export function buildProjectKnowledge(
       description: product.description.trim(),
       price: product.price.trim(),
       category: product.category.trim(),
+      sizes: product.sizes.map((value) => value.trim()).filter(Boolean),
+      colors: product.colors.map((value) => value.trim()).filter(Boolean),
+      variants: product.variants.map((value) => value.trim()).filter(Boolean),
+      imageUrl: product.imageUrl.trim(),
     }));
   const services = content.services
     .filter((service) => hasValue(service.name))
@@ -164,6 +177,8 @@ export function buildProjectKnowledge(
       name: service.name.trim(),
       description: service.description.trim(),
       price: service.price.trim(),
+      duration: service.duration.trim(),
+      features: service.features.map((value) => value.trim()).filter(Boolean),
     }));
   const team = content.team
     .filter((member) => hasValue(member.name))
@@ -234,12 +249,21 @@ export function buildProjectKnowledge(
   fact(hasValue(business.productSummary), `Offering: ${business.productSummary.trim()}`);
   for (const offering of offerings) knownFacts.push(`Offers: ${offering}`);
   for (const product of products) {
+    const options = [
+      product.sizes.length > 0 ? `sizes: ${product.sizes.join("/")}` : "",
+      product.colors.length > 0 ? `colours: ${product.colors.join("/")}` : "",
+      product.variants.length > 0 ? `variants: ${product.variants.join("/")}` : "",
+    ].filter(Boolean);
     knownFacts.push(
-      `Product: ${product.name}${product.price ? ` (${product.price})` : ""}${product.category ? ` [${product.category}]` : ""}`,
+      `Product: ${product.name}${product.price ? ` (${product.price})` : ""}${product.category ? ` [${product.category}]` : ""}${
+        options.length > 0 ? ` - ${options.join(", ")}` : ""
+      }`,
     );
   }
   for (const service of services) {
-    knownFacts.push(`Service: ${service.name}${service.price ? ` (${service.price})` : ""}`);
+    knownFacts.push(
+      `Service: ${service.name}${service.price ? ` (${service.price})` : ""}${service.duration ? ` [${service.duration}]` : ""}`,
+    );
   }
   for (const member of team) {
     knownFacts.push(`Team member: ${member.name}${member.role ? ` - ${member.role}` : ""}`);
@@ -344,8 +368,16 @@ export function clientText(knowledge: ProjectKnowledge): string {
     knowledge.valueProposition,
     knowledge.problem,
     ...knowledge.offerings,
-    ...knowledge.products.flatMap((product) => [product.name, product.description, product.price, product.category]),
-    ...knowledge.services.flatMap((service) => [service.name, service.description, service.price]),
+    ...knowledge.products.flatMap((product) => [
+      product.name,
+      product.description,
+      product.price,
+      product.category,
+      ...product.sizes,
+      ...product.colors,
+      ...product.variants,
+    ]),
+    ...knowledge.services.flatMap((service) => [service.name, service.description, service.price, service.duration, ...service.features]),
     ...knowledge.benefits,
     ...knowledge.locations,
     knowledge.clientContent.headline,

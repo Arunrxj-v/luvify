@@ -13,13 +13,14 @@
  * Authentication and malformed-request failures are never retried. The number
  * of retries comes from AI_MAX_RETRIES (via the shared config).
  *
- * Fallback model: when the primary model (GEMINI_MODEL, Gemini 3.8 Flash) runs
+ * Fallback model: when the primary model (GEMINI_MODEL, Gemini 3.5 Flash Lite) runs
  * out of retries on a TRANSIENT failure, one extra cycle with the same retry
  * budget re-sends the identical request (same prompts, JSON mode, temperature,
  * token limit) against GEMINI_FALLBACK_MODEL - only the model id changes, the
  * pipeline never sees which model answered. Non-transient failures (auth,
- * invalid request, missing key, unknown model) never use the fallback. Which
- * model was used, and whether a fallback happened, is logged per request.
+ * invalid request, missing key, unknown model) never use the fallback. Rate
+ * limits are account/project scoped and also skip the fallback. Which model
+ * was used, and whether a fallback happened, is logged per request.
  *
  * Structured output uses the SDK's own JSON mode (`responseMimeType:
  * "application/json"`) instead of relying on prompt wording alone, so the
@@ -122,6 +123,20 @@ export function retryDelayFor(error: AIError, attempt: number, retryAfterMs: num
  */
 function finalizeFailure(error: AIError, attempts: number, tried?: readonly [string, string]): AIError {
   if (!isTransientUpstreamError(error)) return error;
+  if (error.kind === "rate_limited") {
+    const delay = (error.detail as { retryDelayMs?: unknown } | undefined)?.retryDelayMs;
+    const retryAfter =
+      typeof delay === "number" && delay > 0 ? ` Retry after ${Math.ceil(delay / 1_000)} seconds.` : "";
+    return new AIError(
+      "rate_limited",
+      `Gemini API rate limit reached. Please wait and try again.${retryAfter} ${error.message}`.trim(),
+      {
+        upstreamStatus: error.upstreamStatus,
+        retryable: error.retryable,
+        detail: error.detail,
+      },
+    );
+  }
   const headline = tried
     ? `Gemini is temporarily unavailable: ${tried[0]} and fallback model ${tried[1]} both failed after ` +
       `${attempts} attempts each.`
@@ -133,21 +148,87 @@ function finalizeFailure(error: AIError, attempts: number, tried?: readonly [str
   });
 }
 
+interface GeminiErrorBody {
+  message: string;
+  status: string;
+  code: number | null;
+  details: unknown;
+  retryDelayMs: number | null;
+}
+
+/** Parses Gemini RetryInfo's duration string (`"24s"`, `"1.5s"`). */
+function parseRetryDelayMs(value: unknown): number | null {
+  if (typeof value !== "string") return null;
+  const match = value.trim().match(/^(\d+(?:\.\d+)?)s$/i);
+  if (!match) return null;
+  const seconds = Number(match[1]);
+  return Number.isFinite(seconds) && seconds >= 0 ? Math.round(seconds * 1_000) : null;
+}
+
+/** Finds `RetryInfo.retryDelay` in the provider's error details. */
+function findRetryDelayMs(details: unknown): number | null {
+  if (!Array.isArray(details)) return null;
+  for (const entry of details) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const delay = parseRetryDelayMs((entry as { retryDelay?: unknown }).retryDelay);
+    if (delay !== null) return delay;
+  }
+  return null;
+}
+
+/** Parses the JSON error envelope the SDK puts in `ApiError.message`. */
+function parseGeminiErrorBody(raw: string): GeminiErrorBody {
+  const fallback: GeminiErrorBody = {
+    message: clip(raw),
+    status: "",
+    code: null,
+    details: null,
+    retryDelayMs: null,
+  };
+  if (!raw) return { ...fallback, message: "" };
+  try {
+    const parsed = JSON.parse(raw) as {
+      error?: {
+        message?: unknown;
+        status?: unknown;
+        code?: unknown;
+        details?: unknown;
+      } | string;
+    };
+    if (typeof parsed.error === "string") return { ...fallback, message: clip(parsed.error) };
+    if (!parsed.error) return fallback;
+    const message = typeof parsed.error.message === "string" ? clip(parsed.error.message) : "";
+    const status = typeof parsed.error.status === "string" ? parsed.error.status : "";
+    const code =
+      typeof parsed.error.code === "number" && Number.isFinite(parsed.error.code) ? parsed.error.code : null;
+    const details = parsed.error.details ?? null;
+    return {
+      message: message || fallback.message,
+      status,
+      code,
+      details,
+      retryDelayMs: findRetryDelayMs(details),
+    };
+  } catch {
+    return fallback;
+  }
+}
+
 /** Pulls `error.message` out of a Gemini error body without throwing. */
 function extractProviderMessage(body: string): string {
-  if (!body) return "";
-  try {
-    const parsed = JSON.parse(body) as { error?: { message?: unknown } | string };
-    const value = typeof parsed.error === "string" ? parsed.error : parsed.error?.message;
-    return typeof value === "string" ? value.slice(0, 300) : "";
-  } catch {
-    return body.slice(0, 300);
-  }
+  return parseGeminiErrorBody(body).message;
 }
 
 /** Shortens any message before it reaches logs or API responses. */
 function clip(message: string): string {
   return message.replace(/\s+/g, " ").slice(0, 300);
+}
+
+/** Removes the configured API key and URL-style key parameters from diagnostics. */
+function redactSecrets(value: string, apiKey: string): string {
+  let redacted = value;
+  if (apiKey.trim().length >= 8) redacted = redacted.split(apiKey).join("[redacted]");
+  return redacted.replace(/([?&](?:key|api_key)=)[^&\s]+/gi, "$1[redacted]");
 }
 
 /** Status code carried by the error, when the SDK attached one. */
@@ -165,35 +246,68 @@ function readMessage(error: unknown): string {
   return `${clip(error.message)}${causeText}`;
 }
 
+interface GeminiFailureFlags {
+  rateLimited: boolean;
+  authError: boolean;
+  modelNotFound: boolean;
+  malformedRequest: boolean;
+}
+
+/** Reads the provider's semantic status, not just the transport status. */
+function geminiFailureFlags(status: number | null, body: GeminiErrorBody): GeminiFailureFlags {
+  const text = `${body.status} ${body.message}`;
+  const rateLimited =
+    status === 429 ||
+    /RESOURCE_EXHAUSTED|quota|rate[ _-]?limit|too many requests/i.test(text);
+  const authError =
+    status === 401 ||
+    status === 403 ||
+    /UNAUTHENTICATED|PERMISSION_DENIED|API[_ ]KEY_INVALID|api key not valid|invalid api key/i.test(text);
+  const modelNotFound =
+    status === 404 ||
+    /NOT_FOUND|model.{0,40}(not found|not available|unsupported|does not exist|decommissioned)/i.test(text);
+  const malformedRequest = status === 400 && !rateLimited && !authError && !modelNotFound;
+  return { rateLimited, authError, modelNotFound, malformedRequest };
+}
+
 /** Classifies a Gemini HTTP status into the shared failure taxonomy. */
-function classifyGeminiStatus(status: number, message: string): AIError {
+function classifyGeminiStatus(status: number, message: string, body?: GeminiErrorBody): AIError {
   const options = { upstreamStatus: status };
-  const text = message.trim();
-  if (status === 400) {
-    // Gemini reports a missing/invalid/revoked key as HTTP 400 INVALID_ARGUMENT.
-    if (/api key/i.test(text)) {
-      return new AIError("invalid_api_key", `Gemini rejected the API key (HTTP 400). ${text}`.trim(), options);
-    }
-    return new AIError("provider_error", `Gemini rejected the request (HTTP 400). ${text}`.trim(), options);
+  const parsed = body ?? parseGeminiErrorBody(message);
+  const text = (parsed.message || message).trim();
+  const flags = geminiFailureFlags(status, parsed);
+
+  // Quota can surface as 400/403 in some Gemini projects, so classify on the
+  // provider status as well as the HTTP code.
+  if (flags.rateLimited) {
+    return new AIError("rate_limited", `Gemini rate limit reached (HTTP ${status}). ${text}`.trim(), {
+      ...options,
+      retryable: true,
+      detail: {
+        geminiStatus: parsed.status || "RESOURCE_EXHAUSTED",
+        ...(parsed.retryDelayMs !== null ? { retryDelayMs: parsed.retryDelayMs } : {}),
+      },
+    });
   }
-  if (status === 401 || status === 403) {
+  if (flags.authError) {
     return new AIError("invalid_api_key", `Gemini rejected the API key (HTTP ${status}). ${text}`.trim(), options);
   }
-  if (status === 404) {
+  if (flags.modelNotFound) {
     return new AIError(
       "model_unavailable",
-      `The configured model was not found on Gemini (HTTP 404). ${text}`.trim(),
+      `The configured model was not found on Gemini (HTTP ${status}). ${text}`.trim(),
       options,
     );
   }
   if (status === 408) {
     return new AIError("timeout", `Gemini timed out (HTTP 408). ${text}`.trim(), { ...options, retryable: true });
   }
-  if (status === 429) {
-    return new AIError("rate_limited", `Gemini rate limit reached (HTTP 429). ${text}`.trim(), {
-      ...options,
-      retryable: true,
-    });
+  if (status === 400) {
+    return new AIError(
+      "provider_error",
+      `Gemini rejected the request (HTTP 400). ${text}`.trim(),
+      options,
+    );
   }
   // 500 / 502 / 503 / 504 (and any other 5xx) are transient: Gemini's own
   // "high demand" overload response arrives as 503 and must be retried.
@@ -204,6 +318,45 @@ function classifyGeminiStatus(status: number, message: string): AIError {
     });
   }
   return new AIError("provider_error", `Gemini returned HTTP ${status}. ${text}`.trim(), options);
+}
+
+/**
+ * Emits one safe diagnostic line for a failed Gemini call. Request/response
+ * bodies and the API key are never included; only the provider's message and
+ * selected error metadata are exposed.
+ */
+function logGeminiFailure(input: {
+  error: unknown;
+  classified: AIError;
+  operation: string;
+  projectId?: string | undefined;
+  model: string;
+  retryAfterMs: number | null;
+  apiKey: string;
+}): void {
+  const raw = input.error instanceof Error ? input.error.message : String(input.error);
+  const body = parseGeminiErrorBody(raw);
+  const status = input.error instanceof ApiError ? input.error.status : readStatus(input.error);
+  const flags = geminiFailureFlags(status, body);
+  const detail = body.details ? clip(JSON.stringify(body.details)) : "";
+  logAI("provider_failure", {
+    operation: input.operation,
+    projectId: input.projectId,
+    provider: "gemini",
+    model: input.model,
+    httpStatus: status ?? "n/a",
+    geminiStatus: body.status || "n/a",
+    geminiCode: body.code ?? "n/a",
+    message: redactSecrets(body.message || readMessage(input.error), input.apiKey),
+    kind: input.classified.kind,
+    retryable: input.classified.retryable,
+    rateLimited: flags.rateLimited,
+    authError: flags.authError,
+    modelNotFound: flags.modelNotFound,
+    malformedRequest: flags.malformedRequest,
+    retryAfterMs: input.retryAfterMs ?? "n/a",
+    ...(detail ? { details: redactSecrets(detail, input.apiKey) } : {}),
+  });
 }
 
 /**
@@ -220,7 +373,8 @@ function classifyGeminiFailure(error: unknown, timeoutMs: number): AIError {
   // HTTP-level failure: `ApiError` (or anything carrying an HTTP status).
   const status = error instanceof ApiError ? error.status : readStatus(error);
   if (status !== null && status >= 100) {
-    return classifyGeminiStatus(status, extractProviderMessage(raw) || message);
+    const body = parseGeminiErrorBody(raw);
+    return classifyGeminiStatus(status, extractProviderMessage(raw) || message, body);
   }
 
   // Our own AbortController fired, or the SDK cancelled the request.
@@ -324,8 +478,10 @@ export class GeminiProvider implements AIProvider {
     // Fallback is for TRANSIENT failures only (`retryable` is the transient
     // flag by contract): a bad key, a rejected request or a misconfigured
     // model must surface immediately instead of trying another model.
+    // Rate limits are account/project scoped, so switching models would only
+    // burn the same quota; surface RATE_LIMITED without a fallback cycle.
     const fallback = this.fallbackModelFor(primary);
-    if (!fallback || !primaryRun.error.retryable) {
+    if (!fallback || !primaryRun.error.retryable || primaryRun.error.kind === "rate_limited") {
       throw finalizeFailure(primaryRun.error, primaryRun.attempts);
     }
 
@@ -474,7 +630,22 @@ export class GeminiProvider implements AIProvider {
     try {
       response = await this.getClient().models.generateContent(params);
     } catch (error) {
-      throw classifyGeminiFailure(error, this.config.timeoutMs);
+      const classified = classifyGeminiFailure(error, this.config.timeoutMs);
+      // Gemini often reports quota RetryInfo in the body rather than a header.
+      if (hint.retryAfterMs === null && classified.kind === "rate_limited") {
+        const bodyDelay = (classified.detail as { retryDelayMs?: unknown } | undefined)?.retryDelayMs;
+        if (typeof bodyDelay === "number" && bodyDelay >= 0) hint.retryAfterMs = bodyDelay;
+      }
+      logGeminiFailure({
+        error,
+        classified,
+        operation: request.operation,
+        projectId: request.projectId,
+        model,
+        retryAfterMs: hint.retryAfterMs,
+        apiKey: this.config.apiKey,
+      });
+      throw classified;
     } finally {
       clearTimeout(timer);
     }

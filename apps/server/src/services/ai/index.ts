@@ -50,6 +50,29 @@ export { applyPageCopy } from "./apply";
 export { requirementUpdateToPatch, removalSentences } from "./patch";
 export { generateSiteWithAI } from "./generation";
 export type { AIPipelineInput, AIPipelineResult } from "./generation";
+export {
+  GENERATION_PROMPT_VERSION,
+  buildGenerationPrompt,
+  buildGenerationPromptPair,
+  buildWebsiteSpecification,
+  renderGenerationSpecification,
+  validateWebsiteSpecification,
+} from "./prompt-builder";
+export type {
+  BuildGenerationSpecificationInput,
+  GenerationAssetInput,
+  GenerationContact,
+  GenerationDesign,
+  GenerationNavigationItem,
+  GenerationPageSpec,
+  GenerationPlanInput,
+  GenerationProduct,
+  GenerationProjectInput,
+  GenerationPromptPair,
+  GenerationService,
+  SpecificationValidation,
+  WebsiteGenerationSpecification,
+} from "./prompt-builder";
 export { extractRequirements, planArchitecture, generatePageCopy, validatePageCopy, composeChatReply } from "./operations";
 export type { AIProjectContext } from "./operations";
 export type { AIProvider } from "./provider";

@@ -16,6 +16,10 @@ export const ServiceItemSchema = z.object({
   name: text,
   description: text,
   price: text,
+  /** How long the service takes ("30 min", "2 hours"). */
+  duration: text,
+  /** Concrete inclusions or features the client supplied. */
+  features: stringList,
 });
 export type ServiceItem = z.infer<typeof ServiceItemSchema>;
 
@@ -24,6 +28,12 @@ export const ProductItemSchema = z.object({
   description: text,
   price: text,
   category: text,
+  /** Product variants the client actually offers. Never inferred. */
+  sizes: stringList,
+  colors: stringList,
+  variants: stringList,
+  /** Optional supplied image URL or reference. */
+  imageUrl: text,
 });
 export type ProductItem = z.infer<typeof ProductItemSchema>;
 

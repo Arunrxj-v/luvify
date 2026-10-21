@@ -68,7 +68,7 @@ export const PAGE_KEYWORDS: Array<{ name: string; path: string; keywords: string
   { name: "Gallery", path: "/gallery", keywords: ["gallery", "photo gallery", "album"] },
   { name: "Pricing", path: "/pricing", keywords: ["pricing", "plans", "packages", "rates", "tariffs"] },
   { name: "Blog", path: "/blog", keywords: ["blog", "articles", "news page", "insights"] },
-  { name: "Booking", path: "/booking", keywords: ["booking page", "reservations page", "book online"] },
+  { name: "Booking", path: "/booking", keywords: ["booking page", "reservations page", "book online", "online reservations", "online booking", "reserve online", "booking system"] },
   { name: "Team", path: "/team", keywords: ["team page", "meet the team", "our people", "staff"] },
   { name: "FAQ", path: "/faq", keywords: ["faq", "frequently asked questions"] },
   { name: "Contact", path: "/contact", keywords: ["contact", "get in touch", "enquiries", "enquiry", "find us"] },
@@ -397,13 +397,67 @@ export function extractSocials(text: string): Record<string, string> {
 
 export const HOURS_PATTERN = /\b(mon|tue|wed|thu|fri|sat|sun|daily|weekdays|weekends)[a-z]*\b[^.!?]{0,40}/i;
 
+/**
+ * Explicit product lists in a change request ("add these products: A, B" or
+ * "products include A for ₹499 and B"). Only runs when the client clearly
+ * frames product names; it never treats a page request as catalogue data.
+ */
+function extractExplicitProducts(
+  text: string,
+): Array<{ name: string; description: string; price: string; category: string; sizes: string[]; colors: string[]; variants: string[]; imageUrl: string }> {
+  const patterns = [
+    /\b(?:add|include|stock|sell|offer)\b[^.!?\n]{0,45}?\b(?:these\s+)?(?:products?|items?)\s*(?::|–|-|include|are|like|such as)\s*([^.!?\n]+)/i,
+    /\b(?:products?|items?)\s*(?:include|are|:)\s*([^.!?\n]+)/i,
+  ];
+  const rawList = patterns.map((pattern) => text.match(pattern)?.[1]).find(Boolean);
+  if (!rawList) return [];
+  const out: Array<{
+    name: string;
+    description: string;
+    price: string;
+    category: string;
+    sizes: string[];
+    colors: string[];
+    variants: string[];
+    imageUrl: string;
+  }> = [];
+  // Do not split inside a thousands separator ("₹1,499").
+  for (const raw of rawList
+    .split(/[;]|\band\b|,(?!\d{3}(?:\D|$))/i)
+    .map((entry) => entry.trim())
+    .filter(Boolean)) {
+    const price = extractMoney(raw) ?? "";
+    const name = raw
+      .replace(/\(?[₹$€£]\s?[\d.,]+(?:\s?(?:k|m))?\)?/gi, "")
+      .replace(/\b(?:for|at|priced at|price)\b.*$/i, "")
+      .replace(/^[-–•\s]+/, "")
+      .replace(/[.]+$/, "")
+      .trim();
+    if (name.length < 2 || name.length > 80) continue;
+    if (/\b(page|section|website|store|cart|checkout|collection page)\b/i.test(name)) continue;
+    if (!out.some((entry) => entry.name.toLowerCase() === name.toLowerCase())) {
+      out.push({ name, description: "", price, category: "", sizes: [], colors: [], variants: [], imageUrl: "" });
+    }
+  }
+  return out;
+}
+
 /** Reads a free-form message and produces requirement updates for what it recognises. */
 export function extractRequirementsFromText(text: string, current: Requirements): Partial<Requirements> {
   const patch: Record<string, unknown> = {};
   const lower = text.toLowerCase();
 
   const pages = detectPages(text);
-  if (pages.length > 0) setPath(patch, "website.requiredPages", pages);
+  if (pages.length > 0) {
+    // "Add a booking page" extends the plan; "use only these pages" replaces it.
+    const restrictsPages = /\b(?:only|just)\b[^.!?]{0,50}\bpages?\b|\bpages?\b[^.!?]{0,20}\bonly\b/i.test(text);
+    const requiredPages = restrictsPages
+      ? pages
+      : [...current.website.requiredPages, ...pages].filter(
+          (name, index, all) => all.findIndex((entry) => entry.toLowerCase() === name.toLowerCase()) === index,
+        );
+    setPath(patch, "website.requiredPages", requiredPages);
+  }
 
   const features = detectFeatures(text, current.features);
   if (pages.length > 0 || features.reviewed) setPath(patch, "features", features);
@@ -445,18 +499,30 @@ export function extractRequirementsFromText(text: string, current: Requirements)
   const pricedServices = [...(current.content.services ?? [])].map((entry) => ({ ...entry }));
   const matchedProducts = attachPrice(text, pricedProducts);
   const matchedServices = attachPrice(text, pricedServices);
-  if (matchedProducts.length > 0 || matchedServices.length > 0) {
-    if (matchedProducts.length > 0) {
+  // Explicit product names carry their own prices. Add them after text-price
+  // matching so one sentence cannot attach the same price to every product.
+  const explicitProducts = extractExplicitProducts(text);
+  for (const product of explicitProducts) {
+    if (!pricedProducts.some((entry) => entry.name.toLowerCase() === product.name.toLowerCase())) pricedProducts.push(product);
+  }
+  if (matchedProducts.length > 0 || matchedServices.length > 0 || explicitProducts.length > 0) {
+    if (matchedProducts.length > 0 || explicitProducts.length > 0) {
       const ecommerceNames = new Set(current.ecommerce.products.map((entry) => entry.name));
-      setPath(
-        patch,
-        "content.products",
-        pricedProducts.filter((entry) => !ecommerceNames.has(entry.name)),
-      );
+      // A change request that adds products to an online store belongs in the
+      // ecommerce catalogue even when the store had no products yet.
+      const explicitNames = new Set(explicitProducts.map((entry) => entry.name));
+      const explicitInEcommerce =
+        explicitProducts.length > 0 &&
+        (current.website.type === "ecommerce" || current.features.ecommerce || current.ecommerce.products.length > 0);
       setPath(
         patch,
         "ecommerce.products",
-        pricedProducts.filter((entry) => ecommerceNames.has(entry.name)),
+        pricedProducts.filter((entry) => ecommerceNames.has(entry.name) || (explicitInEcommerce && explicitNames.has(entry.name))),
+      );
+      setPath(
+        patch,
+        "content.products",
+        pricedProducts.filter((entry) => !ecommerceNames.has(entry.name) && !(explicitInEcommerce && explicitNames.has(entry.name))),
       );
     }
     if (matchedServices.length > 0) setPath(patch, "content.services", pricedServices);

@@ -14,11 +14,12 @@
 
 import type { ProjectKnowledge } from "@luvify/shared";
 import { summarizeKnowledge } from "@luvify/shared";
+import { renderGenerationSpecification, type WebsiteGenerationSpecification } from "./prompt-builder";
 
 /** The non-negotiable grounding rules attached to every generation prompt. */
 export const GROUNDING_RULES = [
   "You are writing for ONE specific business described below. Never write content for any other business, industry or product category.",
-  "Use ONLY the verified facts provided. Never invent or guess: phone numbers, addresses, emails, prices, statistics, awards, certifications, years of experience, customer or patient counts, testimonials, reviews, employee or doctor names, founder names, locations, opening hours, qualifications, guarantees, shipping or return policies, or company history.",
+  "Use ONLY the verified facts provided. Never invent or guess: phone numbers, addresses, emails, prices, statistics, awards, certifications, years of experience, customer or patient counts, testimonials, reviews, employee or staff names, founder names, locations, opening hours, qualifications, guarantees, shipping or return policies, or company history.",
   "When a detail is listed as UNKNOWN or appears in the content gaps, do NOT invent it. Write around it, or use a clearly editable placeholder such as \"Add your clinic's contact number\" instead of a fabricated value.",
   "Never output a specific number, currency amount, percentage or date unless it appears in the verified facts.",
   "Write concrete, useful marketing copy grounded in the offering described - being specific about what the client does is good; inventing facts is not.",
@@ -85,6 +86,7 @@ export function architecturePrompt(context: {
   requiredPages: string[];
   primaryGoal: string;
   conversionAction: string;
+  specification?: WebsiteGenerationSpecification;
 }): PromptPair {
   const system = [
     "You are Luvify's website architect. You decide the structure of a website from a client's requirements.",
@@ -93,10 +95,18 @@ export function architecturePrompt(context: {
       "Derive the page set from THIS business's actual services and goals - never from a universal template.",
       "Correct domain-specific examples: hospital/clinic -> Home, Doctors or Departments, Book Appointment, Services, About, Contact; e-commerce -> Home, Shop, Product, Cart, Checkout; restaurant -> Home, Menu, Reservations, Location; SaaS -> Home, Features, Pricing, Docs; portfolio -> Home, Work, About, Contact.",
       "Do NOT propose Shop, Cart, Checkout, Wishlist or Pricing unless the client sells products or charges money. Do NOT propose Doctors, Departments or Appointments unless the business provides them.",
+      "Never propose a page that the specification lists under EXPLICIT EXCLUSIONS.",
     ].join("\n"),
   ].join("\n\n");
 
   const user = [
+    ...(context.specification
+      ? [
+          "--- WEBSITE GENERATION SPECIFICATION (authoritative project context) ---",
+          renderGenerationSpecification(context.specification),
+          "",
+        ]
+      : []),
     projectBlock(context),
     "",
     "--- CLIENT REQUIREMENTS ---",
@@ -121,6 +131,8 @@ export function architecturePrompt(context: {
     "- Every page needs a `purpose` naming what it does for THIS business.",
     "- `contentRequirements` lists the specific information that page needs.",
     "- Include only pages this business genuinely needs.",
+    "- REQUIRED PAGES in the specification are fixed: keep every one of them with its path. Do not add pages that contradict the specification or its exclusions.",
+    "- Latest explicit user corrections override domain defaults. Never invent departments, doctors, products or services that are not in the user-provided facts.",
   ].join("\n");
 
   return { system, user };
@@ -169,8 +181,19 @@ export function requirementExtractionPrompt(
         headline: "",
         subheadline: "",
         about: "",
-        services: [{ name: "", description: "", price: "" }],
-        products: [{ name: "", description: "", price: "", category: "" }],
+        services: [{ name: "", description: "", price: "", duration: "", features: [] }],
+        products: [
+          {
+            name: "",
+            description: "",
+            price: "",
+            category: "",
+            sizes: [],
+            colors: [],
+            variants: [],
+            imageUrl: "",
+          },
+        ],
         contact: { email: "", phone: "", address: "", hours: "" },
         removals: ["things the client said they no longer offer"],
       },
@@ -181,7 +204,8 @@ export function requirementExtractionPrompt(
     "Rules:",
     "- Only fill fields the newest message (or an unambiguous earlier client statement) supports.",
     "- Put anything the client says they no longer offer in `removals`.",
-    "- Never invent contact details, prices, names or statistics.",
+    "- Never invent contact details, prices, names, sizes, colours, variants or statistics.",
+    "- Only fill sizes, colours, variants and imageUrl when the client supplied them.",
   ].join("\n");
 
   return { system, user };
@@ -240,11 +264,13 @@ export function pageCopyPrompt(input: {
     contentRequirements: string[];
     sectionTypes: string[];
   };
+  specification?: WebsiteGenerationSpecification;
 }): PromptPair {
   const system = [
     "You are Luvify's copywriter. You write the content for exactly one page of one website.",
     GROUNDING_RULES,
     "Write real, specific copy for THIS business. Do not pad with generic filler and do not describe features the client never asked for.",
+    "Follow the detailed website generation specification exactly. Its USER-PROVIDED FACTS are the only factual source, and its EXPLICIT EXCLUSIONS and UNKNOWN INFORMATION are binding.",
   ].join("\n\n");
 
   const otherPages = input.architecture.pages
@@ -253,6 +279,13 @@ export function pageCopyPrompt(input: {
     .join("\n");
 
   const user = [
+    ...(input.specification
+      ? [
+          "--- WEBSITE GENERATION SPECIFICATION (authoritative project context) ---",
+          renderGenerationSpecification(input.specification, { focusPagePath: input.page.path }),
+          "",
+        ]
+      : []),
     projectBlock(input),
     "",
     "--- WEBSITE ARCHITECTURE (this project) ---",
@@ -282,6 +315,8 @@ export function pageCopyPrompt(input: {
     "- `items` must be grounded in the verified knowledge; omit an item list entirely rather than filling it with invented specifics.",
     "- If the page is a contact or booking page, never invent an address, phone number, email or opening hours. Leave those fields empty - the renderer shows an editable placeholder.",
     "- Never mention a different industry, product or business.",
+    "- Never use content or imagery from another project, and never add a section or claim that the specification excludes.",
+    "- Only reference navigation destinations that exist in the specification's generated routes.",
   ].join("\n");
 
   return { system, user };
@@ -299,6 +334,7 @@ export function contentValidationPrompt(input: {
   knowledge: ProjectKnowledge;
   page: { name: string; path: string; purpose: string };
   copy: unknown;
+  specification?: WebsiteGenerationSpecification;
 }): PromptPair {
   const system = [
     "You are Luvify's content auditor. You judge whether generated page copy is safe to publish.",
@@ -306,8 +342,27 @@ export function contentValidationPrompt(input: {
     "Judge only against the project knowledge given. Do not add content yourself.",
   ].join("\n");
 
+  const specBlock = input.specification
+    ? [
+        "",
+        "--- BINDING EXCLUSIONS ---",
+        input.specification.explicitExclusions.join("; "),
+        "",
+        "--- UNKNOWN INFORMATION (must not appear as fact) ---",
+        input.specification.unknowns.join("; "),
+      ].join("\n")
+    : "";
+
   const user = [
+    ...(input.specification
+      ? [
+          "--- WEBSITE GENERATION SPECIFICATION (authoritative project context) ---",
+          renderGenerationSpecification(input.specification),
+          "",
+        ]
+      : []),
     projectBlock(input),
+    specBlock,
     "",
     "--- PAGE UNDER REVIEW ---",
     `Name: ${input.page.name}`,
@@ -337,7 +392,7 @@ export function contentValidationPrompt(input: {
     '- `verdict` is "reject" when the copy belongs to a different business/industry or invents significant facts, "revise" for smaller unsupported claims, "accept" when it is grounded and on-topic.',
     "- Count invented contact details, prices, statistics, credentials, names and policies as unsupported facts.",
     "",
-    "Example of the failure you must catch: copy about candles, shipping or a cart would be `unrelatedContent` on a hospital appointment page.",
+    "Example of the failure you must catch: copy about unrelated products, shipping or a cart would be `unrelatedContent` on a hospital appointment page.",
   ].join("\n");
 
   return { system, user };

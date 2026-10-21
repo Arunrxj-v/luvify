@@ -112,14 +112,14 @@ describe("section coverage", () => {
     }
   });
 
-  it("covers the two types no template emits", () => {
+  it("covers the document-level type no template page emits", () => {
     const emitted = new Set<string>();
     for (const id of TEMPLATE_IDS) {
       for (const page of buildDocument(id).pages) {
         for (const section of page.sections) emitted.add(section.type);
       }
     }
-    expect(SECTION_TYPES.filter((type) => !emitted.has(type))).toEqual(["ProductCard", "Footer"]);
+    expect(SECTION_TYPES.filter((type) => !emitted.has(type))).toEqual(["Footer"]);
   });
 
   it("omits sections marked invisible", () => {
@@ -129,6 +129,52 @@ describe("section coverage", () => {
     const html = withSections(doc, [{ ...hidden.section, visible: false }, shown.section]);
     expect(html).toContain(shown.title);
     expect(html).not.toContain(hidden.title);
+  });
+});
+
+describe("product rendering", () => {
+  it("renders supplied sizes, colours, variants and product images", () => {
+    const base = emptyRequirements("ecommerce");
+    const requirements = RequirementsSchema.parse({
+      ...base,
+      business: {
+        ...base.business,
+        name: "Hunt Culture",
+        description: "Independent streetwear label selling heavyweight T-shirts.",
+        productSummary: "Independent streetwear label selling heavyweight T-shirts.",
+      },
+      website: { ...base.website, type: "ecommerce", requiredPages: ["Home", "Shop"] },
+      ecommerce: {
+        ...base.ecommerce,
+        products: [
+          {
+            name: "Heavyweight Tee",
+            description: "Boxy heavyweight cotton tee.",
+            price: "₹1,499",
+            category: "T-Shirts",
+            sizes: ["S", "M", "L"],
+            colors: ["Bone", "Black"],
+            variants: ["Oversized fit"],
+            imageUrl: "https://cdn.example.test/heavyweight-tee.jpg",
+          },
+        ],
+      },
+    });
+    const doc = createSiteFromTemplate(
+      "ecommerce",
+      { siteName: "Hunt Culture", requirements },
+      { provider: "mock" },
+    );
+    const shop = doc.pages.find((page) => page.path === "/shop");
+    expect(shop).toBeDefined();
+
+    const html = renderPageHtml(doc, shop!);
+    expect(html).toContain("Heavyweight Tee");
+    expect(html).toContain("Sizes");
+    expect(html).toContain("Bone");
+    expect(html).toContain("Black");
+    expect(html).toContain("Oversized fit");
+    expect(html).toContain("heavyweight-tee.jpg");
   });
 });
 

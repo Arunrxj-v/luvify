@@ -12,6 +12,7 @@ import {
   SiteDocumentSchema,
   applyClientCorrections,
   briefKnownFacts,
+  buildProjectKnowledge,
   extractRequirementsFromText,
   foldBrief,
   mergeRequirements,
@@ -28,7 +29,7 @@ import {
 } from "@luvify/shared";
 import { exportSite, renderPreview } from "@luvify/site-renderer";
 import { currentUserId } from "../auth/middleware";
-import { hydrateProjectDocument } from "../assets";
+import { clientAssetsOf, hydrateProjectDocument } from "../assets";
 import { ApiError, apiHandler, parseWith } from "../errors";
 import { env } from "../env";
 import {
@@ -40,7 +41,15 @@ import {
   resolveTemplateId,
 } from "../generate";
 import { prisma } from "../prisma";
-import { aiIsEnabled, generateSiteWithAI, getAIProvider, runAI } from "../services/ai";
+import {
+  aiIsEnabled,
+  extractRequirements,
+  generateSiteWithAI,
+  getAIProvider,
+  removalSentences,
+  requirementUpdateToPatch,
+  runAI,
+} from "../services/ai";
 import { nextVersionNumber, persistSite, publishProject, verifyDocumentIsolation } from "../pipeline";
 import {
   briefOf,
@@ -53,6 +62,23 @@ import {
 } from "../store";
 
 export const websiteRouter = Router({ mergeParams: true });
+
+/**
+ * The current project's interview conversation, used ONLY to respect explicit
+ * client corrections during specification building. It is filtered by
+ * projectId, so another project's messages can never enter the prompt.
+ */
+async function projectConversation(
+  projectId: string,
+): Promise<Array<{ role: string; content: string }>> {
+  const rows = await prisma.message.findMany({
+    where: { projectId },
+    orderBy: { createdAt: "desc" },
+    take: 40,
+    select: { role: true, content: true },
+  });
+  return rows.reverse().map((row) => ({ role: row.role, content: row.content }));
+}
 
 function existingSpecification(
   row: { data: string } | null | undefined,
@@ -122,6 +148,8 @@ websiteRouter.post(
     if (aiIsEnabled()) {
       const specificationVersion = (project.specification?.version ?? 0) + 1;
       const versionNumber = await nextVersionNumber(project.id);
+      const assets = await clientAssetsOf(project.id);
+      const conversation = await projectConversation(project.id);
       const generated = await runAI(() =>
         generateSiteWithAI(getAIProvider(), {
           project: {
@@ -136,6 +164,8 @@ websiteRouter.post(
           specificationVersion,
           templateId: input.templateId ?? null,
           extraFacts,
+          assets,
+          conversation,
         }),
       );
 
@@ -257,12 +287,43 @@ websiteRouter.post(
     if (!before) throw ApiError.badRequest("Generate the website before modifying it.");
 
     const current = await syncDerivedRequirements(project.id, requirementsOf(project));
-    const merged = RequirementsSchema.parse(
+    let merged = RequirementsSchema.parse(
       mergeRequirements(current, extractRequirementsFromText(input.instruction, current)),
     );
+    let correctionInstruction = input.instruction;
+    // REAL AI EXTRACTION: free-form instructions ("make the shop warmer and
+    // add a product called ...") become the same structured requirement patch
+    // the chat path uses. The brief is folded in so the model knows which facts
+    // already exist and never invents replacements.
+    if (aiIsEnabled()) {
+      const brief = briefOf(project);
+      const view = foldBrief(current, brief);
+      const knowledge = buildProjectKnowledge(view, {
+        projectId: project.id,
+        extraFacts: briefKnownFacts(brief, view),
+      });
+      const conversation = await projectConversation(project.id);
+      const update = await runAI(() =>
+        extractRequirements(
+          getAIProvider(),
+          {
+            projectId: project.id,
+            siteName: project.businessName || project.name,
+            websiteType: project.websiteType,
+            knowledge,
+          },
+          input.instruction,
+          conversation,
+        ),
+      );
+      merged = RequirementsSchema.parse(
+        mergeRequirements(merged, requirementUpdateToPatch(update, merged)),
+      );
+      correctionInstruction = `${input.instruction} ${removalSentences(update.removals)}`.trim();
+    }
     // Corrections in the instruction ("don't sell hoodies anymore") win over
     // stored information before the architecture is recomputed.
-    const requirements = applyClientCorrections(merged, input.instruction);
+    const requirements = applyClientCorrections(merged, correctionInstruction);
     // The modified requirements go through the same derivation as chat, so an
     // instruction like "add a pricing page" updates the approved architecture.
     const derived = await syncDerivedRequirements(project.id, requirements);
@@ -272,19 +333,20 @@ websiteRouter.post(
     const folded = foldBrief(derived, brief);
     const extraFacts = briefKnownFacts(brief, folded);
 
-    const templateId = resolveTemplateId({
+    let templateId = resolveTemplateId({
       requested: null,
       current: project.templateId,
       websiteType: project.websiteType,
       archetype: pagePlanFor(folded).archetype,
     });
     const versionNumber = await nextVersionNumber(project.id);
+    const specificationVersion = (project.specification?.version ?? 0) + 1;
     let specification = buildSpecification({
       siteName: project.businessName || project.name,
       websiteType: project.websiteType,
       requirements: folded,
       provider: env.aiProvider,
-      version: project.specification?.version ?? 1,
+      version: specificationVersion,
       extraFacts,
     });
     let after = buildDocument({
@@ -298,7 +360,10 @@ websiteRouter.post(
 
     // REAL AI PATH: the change request is applied by regenerating page content
     // through OpenRouter from the corrected requirements.
+    let aiRequirements: Requirements | null = null;
     if (aiIsEnabled()) {
+      const assets = await clientAssetsOf(project.id);
+      const conversation = await projectConversation(project.id);
       const generated = await runAI(() =>
         generateSiteWithAI(getAIProvider(), {
           project: {
@@ -310,13 +375,36 @@ websiteRouter.post(
           },
           requirements: folded,
           versionNumber,
-          specificationVersion: (project.specification?.version ?? 0) + 1,
+          specificationVersion,
           templateId,
           extraFacts,
+          assets,
+          // The instruction is the latest explicit client correction and has
+          // priority over every earlier requirement.
+          conversation: [...conversation, { role: "user", content: input.instruction }],
         }),
       );
       specification = generated.specification;
       after = generated.document;
+      aiRequirements = generated.requirements;
+      // The AI plan may classify a different archetype than the stored one;
+      // resolve the template from the architecture actually generated.
+      templateId = resolveTemplateId({
+        requested: null,
+        current: project.templateId,
+        websiteType: project.websiteType,
+        archetype: specification.architecture.archetype,
+      });
+    }
+    // Keep the stored specification and the AI-approved plan in step with the
+    // document that is actually persisted, exactly as initial generation does.
+    await prisma.websiteSpecification.upsert({
+      where: { projectId: project.id },
+      create: { projectId: project.id, data: JSON.stringify(specification), version: specificationVersion },
+      update: { data: JSON.stringify(specification), version: specificationVersion },
+    });
+    if (aiRequirements) {
+      await saveRequirements(project.id, unfoldBrief(aiRequirements, derived));
     }
     // Client uploads fill every empty image slot before the document persists.
     after = await hydrateProjectDocument(project, after);
