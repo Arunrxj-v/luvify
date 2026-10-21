@@ -48,7 +48,13 @@ export function requirementUpdateToPatch(
 
   const services = update.services
     .filter((service) => service.name.trim().length > 0)
-    .map((service) => ({ name: service.name, description: service.description, price: service.price }));
+    .map((service) => ({
+      name: service.name,
+      description: service.description,
+      price: service.price,
+      duration: service.duration,
+      features: service.features,
+    }));
 
   const products = update.products
     .filter((product) => product.name.trim().length > 0)
@@ -57,7 +63,16 @@ export function requirementUpdateToPatch(
       description: product.description,
       price: product.price,
       category: product.category,
+      sizes: product.sizes,
+      colors: product.colors,
+      variants: product.variants,
+      imageUrl: product.imageUrl,
     }));
+
+  const commerce =
+    current.website.type === "ecommerce" ||
+    current.features.ecommerce ||
+    current.ecommerce.products.length > 0;
 
   const contact = compact({
     email: update.contact.email,
@@ -71,7 +86,7 @@ export function requirementUpdateToPatch(
     subheadline: update.subheadline,
     about: update.about,
     ...(services.length > 0 ? { services } : {}),
-    ...(products.length > 0 ? { products } : {}),
+    ...(products.length > 0 && !commerce ? { products } : {}),
     ...(Object.keys(contact).length > 0 ? { contact } : {}),
   });
 
@@ -84,7 +99,10 @@ export function requirementUpdateToPatch(
   if (Object.keys(business).length > 0) patch.business = business;
   if (Object.keys(website).length > 0) patch.website = website;
   if (Object.keys(content).length > 0) patch.content = content;
-  if (products.length > 0) patch.ecommerce = { products };
+  if (products.length > 0) {
+    if (commerce) patch.ecommerce = { products };
+    else patch.content = { ...(patch.content as Record<string, unknown> | undefined), products };
+  }
   if (Object.keys(features).length > 0) patch.features = features;
 
   // Deliberately NOT parsed here: the caller merges this patch with

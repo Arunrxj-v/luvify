@@ -195,6 +195,71 @@ describe("GeminiProvider failure classification", () => {
     expect(aiToApiError(error).status).toBe(502);
   });
 
+  it("classifies a 400 RESOURCE_EXHAUSTED body as rate_limited", async () => {
+    generateContent.mockRejectedValue(
+      new ApiError({
+        status: 400,
+        message: JSON.stringify({
+          error: { code: 400, message: "Quota exceeded.", status: "RESOURCE_EXHAUSTED" },
+        }),
+      }),
+    );
+
+    const error = await provider
+      .complete({ operation: "page_content", messages: [{ role: "user", content: "hi" }] })
+      .catch((caught: unknown) => caught);
+
+    expect((error as AIError).kind).toBe("rate_limited");
+    expect(aiToApiError(error).status).toBe(429);
+  });
+
+  it("logs provider status, message, flags and body RetryInfo without the key", async () => {
+    const apiKey = "AIza-diagnostic-secret-key";
+    const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+    generateContent.mockRejectedValue(
+      new ApiError({
+        status: 429,
+        message: JSON.stringify({
+          error: {
+            code: 429,
+            message: "Quota exceeded for this project.",
+            status: "RESOURCE_EXHAUSTED",
+            details: [
+              {
+                "@type": "type.googleapis.com/google.rpc.RetryInfo",
+                retryDelay: "12s",
+              },
+            ],
+          },
+        }),
+      }),
+    );
+
+    const error = await new GeminiProvider({
+      ...CONFIG,
+      apiKey,
+      maxRetries: 0,
+      fallbackModel: undefined,
+    })
+      .complete({ operation: "page_content", projectId: "proj-diag", messages: [{ role: "user", content: "hi" }] })
+      .catch((caught: unknown) => caught);
+
+    const logged = spy.mock.calls.flat().join("\n");
+    expect(logged).toContain("event=provider_failure");
+    expect(logged).toContain("httpStatus=429");
+    expect(logged).toContain("geminiStatus=RESOURCE_EXHAUSTED");
+    expect(logged).toContain("geminiCode=429");
+    expect(logged).toContain("message=Quota exceeded for this project.");
+    expect(logged).toContain("rateLimited=true");
+    expect(logged).toContain("kind=rate_limited");
+    expect(logged).toContain("retryAfterMs=12000");
+    expect(logged).not.toContain(apiKey);
+
+    expect((error as AIError).kind).toBe("rate_limited");
+    expect((error as AIError).message).toContain("Gemini API rate limit reached");
+    expect((error as AIError).message).toContain("Retry after 12 seconds");
+  });
+
   it("retries a 429 then succeeds", async () => {
     mockImmediateTimers();
     generateContent
@@ -509,6 +574,20 @@ describe("Gemini model fallback", () => {
     expect((error as AIError).kind).toBe("invalid_api_key");
     expect((error as AIError).message).not.toMatch(/temporarily unavailable/i);
     expect(spy.mock.calls.flat().join("\n")).not.toContain("event=model_fallback");
+  });
+
+  it("does not fall back when the account is rate limited", async () => {
+    mockImmediateTimers();
+    generateContent.mockRejectedValue(apiError(429, "Quota exceeded for this project."));
+
+    const error = await new GeminiProvider(FALLBACK_CONFIG)
+      .complete(REQUEST)
+      .catch((caught: unknown) => caught);
+
+    // Primary retries only; the fallback would share the same quota.
+    expect(generateContent).toHaveBeenCalledTimes(FALLBACK_CONFIG.maxRetries + 1);
+    expect((error as AIError).kind).toBe("rate_limited");
+    expect((error as AIError).message).toContain("Gemini API rate limit reached");
   });
 
   it("does not fall back for malformed requests (HTTP 400)", async () => {

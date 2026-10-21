@@ -645,6 +645,66 @@ describe("existing project functionality", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Stored generation parity - modify then regenerate keeps one plan
+// ---------------------------------------------------------------------------
+
+describe("generation parity", () => {
+  it(
+    "modify and regenerate reuse the same approved page plan and navigation",
+    async () => {
+      const { jar } = await signUpFresh({ email: nextEmail("parity") });
+      const created = await call(jar, "POST", "/api/projects", {
+        name: "Hunt Culture",
+        businessDescription:
+          "An independent streetwear label selling heavyweight T-shirts and hoodies with a focus on oversized fits.",
+        websiteType: "ecommerce",
+        templateId: "ecommerce",
+      });
+      expect(created.status).toBe(201);
+      const projectId = (created.json as { id: string }).id;
+
+      const first = await call(jar, "POST", `/api/projects/${projectId}/generate`, {});
+      expect(first.status).toBe(200);
+      const firstDocument = (first.json as { document: { pages: Array<{ path: string }>; navigation: Array<{ path: string }> } }).document;
+      const firstPaths = firstDocument.pages.map((page) => page.path).sort();
+      expect(firstPaths).toContain("/");
+      expect(firstPaths).toContain("/shop");
+
+      const modified = await call(jar, "POST", `/api/projects/${projectId}/modify`, {
+        instruction: "Make the visual design darker and add a shipping page.",
+      });
+      expect(modified.status).toBe(200);
+
+      const regenerated = await call(jar, "POST", `/api/projects/${projectId}/generate`, {});
+      expect(regenerated.status).toBe(200);
+      const body = regenerated.json as {
+        document: { pages: Array<{ path: string }>; navigation: Array<{ path: string }> };
+      };
+      const regeneratedPaths = body.document.pages.map((page) => page.path).sort();
+      const known = new Set(regeneratedPaths);
+      for (const link of body.document.navigation) {
+        expect(known.has(link.path) || link.path.startsWith("http")).toBe(true);
+      }
+      expect(regeneratedPaths).toEqual(expect.arrayContaining(["/", "/shop"]));
+
+      const detail = await call(jar, "GET", `/api/projects/${projectId}`);
+      const detailBody = detail.json as {
+        specification: { version: number; architecture: { pages: Array<{ path: string }> } } | null;
+      };
+      expect(detailBody.specification).toBeTruthy();
+      expect(detailBody.specification?.version).toBeGreaterThanOrEqual(2);
+      expect(detailBody.specification?.architecture.pages.map((page) => page.path).sort()).toEqual(
+        regeneratedPaths,
+      );
+
+      const versions = await call(jar, "GET", `/api/projects/${projectId}/versions`);
+      expect((versions.json as unknown[]).length).toBe(3);
+    },
+    300_000,
+  );
+});
+
+// ---------------------------------------------------------------------------
 // Google OAuth - server-side flow, verified without a browser
 // ---------------------------------------------------------------------------
 

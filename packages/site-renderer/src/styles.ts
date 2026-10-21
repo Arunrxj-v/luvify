@@ -130,6 +130,10 @@ a{color:inherit}
 .lv-product__price{font-family:var(--lv-heading);font-weight:600;margin-top:auto}
 .lv-product__compare{color:var(--lv-muted);text-decoration:line-through;font-size:.9rem;margin-left:.4rem}
 .lv-product__category{font-size:.78rem;text-transform:uppercase;letter-spacing:.1em;color:var(--lv-muted)}
+.lv-product__options{display:flex;flex-direction:column;gap:.4rem;margin:.35rem 0}
+.lv-product__option-label{display:block;font-size:.75rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--lv-muted);margin-bottom:.25rem}
+.lv-product__option-list{display:flex;flex-wrap:wrap;gap:.35rem;list-style:none;margin:0;padding:0}
+.lv-product__option-list .lv-chip{font-size:.78rem;padding:.2rem .55rem}
 .lv-chips{display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1.8rem}
 .lv-chip{border:1px solid var(--lv-border);border-radius:999px;padding:.35rem .85rem;font-size:.85rem;color:var(--lv-muted)}
 .lv-chip--active{border-color:var(--lv-primary);color:var(--lv-primary)}

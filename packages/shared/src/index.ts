@@ -15,6 +15,7 @@ export * from "./site";
 export * from "./conversation";
 export * from "./answers";
 export * from "./archetypes";
+export * from "./industry";
 export * from "./knowledge";
 export * from "./brief";
 export * from "./assets";

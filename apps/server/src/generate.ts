@@ -133,6 +133,7 @@ export function pagePlanFor(requirements: Requirements): {
   const pages = stripIrrelevantPages(planned.pages, archetype as WebsiteArchetype, {
     requested: requirements.website.requiredPages,
     commerce,
+    payments: requirements.features.payments,
   }).map((page) => ({ ...page, purpose: purposes.get(`${page.name.toLowerCase()}|${page.path.toLowerCase()}`) ?? "" }));
   return { archetype, pages, userJourneys: planned.userJourneys };
 }

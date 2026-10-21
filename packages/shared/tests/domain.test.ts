@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   SITE_TEMPLATES,
   SECTION_TYPES,
+  ProductEntrySchema,
   RequirementsSchema,
   addSection,
   applyAnswer,
@@ -221,6 +222,87 @@ describe("product summary and offerings", () => {
     expect(grown).toContain("Also offering dessert catering.");
   });
 
+  it("turns an explicit product list in a change request into catalogue entries", () => {
+    const base = emptyRequirements("ecommerce");
+    const requirements = RequirementsSchema.parse(
+      mergeRequirements(
+        base,
+        extractRequirementsFromText("Add these products: Heavyweight Tee for ₹1,499, Bone Hoodie", base),
+      ),
+    );
+    expect(requirements.ecommerce.products).toEqual([
+      expect.objectContaining({ name: "Heavyweight Tee", price: "₹1,499" }),
+      expect.objectContaining({ name: "Bone Hoodie", price: "" }),
+    ]);
+  });
+
+  it("carries supplied product options and images into the rendered template", () => {
+    const base = emptyRequirements("ecommerce");
+    const requirements = RequirementsSchema.parse({
+      ...base,
+      business: {
+        ...base.business,
+        name: "Hunt Culture",
+        description: "Independent streetwear label selling heavyweight T-shirts.",
+        productSummary: "Independent streetwear label selling heavyweight T-shirts.",
+      },
+      website: { ...base.website, type: "ecommerce", requiredPages: ["Home", "Shop"] },
+      ecommerce: {
+        ...base.ecommerce,
+        products: [
+          {
+            name: "Heavyweight Tee",
+            description: "Boxy heavyweight cotton tee.",
+            price: "₹1,499",
+            category: "T-Shirts",
+            sizes: ["S", "M", "L"],
+            colors: ["Bone", "Black"],
+            variants: ["Oversized fit"],
+            imageUrl: "https://cdn.example.test/heavyweight-tee.jpg",
+          },
+        ],
+      },
+    });
+
+    const document = createSiteFromTemplate(
+      "ecommerce",
+      { siteName: "Hunt Culture", requirements },
+      { provider: "mock" },
+    );
+    const shop = document.pages.find((page) => page.path === "/shop");
+    const catalogue = shop?.sections.find((section) => section.type === "Products");
+    expect(catalogue && "items" in catalogue ? catalogue.items[0] : null).toEqual(
+      expect.objectContaining({
+        name: "Heavyweight Tee",
+        imageUrl: "https://cdn.example.test/heavyweight-tee.jpg",
+        sizes: ["S", "M", "L"],
+        colors: ["Bone", "Black"],
+        variants: ["Oversized fit"],
+      }),
+    );
+  });
+
+  it("parses legacy product entries without inventing options", () => {
+    const legacy = ProductEntrySchema.parse({ name: "Legacy Tee" });
+    expect(legacy.sizes).toEqual([]);
+    expect(legacy.colors).toEqual([]);
+    expect(legacy.variants).toEqual([]);
+    expect(legacy.imageUrl).toBe("");
+  });
+
+  it("detects darker style and online reservations in a change request", () => {
+    const base = emptyRequirements("restaurant");
+    base.website.requiredPages = ["Home", "Menu", "Contact"];
+    const requirements = RequirementsSchema.parse(
+      mergeRequirements(
+        base,
+        extractRequirementsFromText("Use a darker style and add online reservations.", base),
+      ),
+    );
+    expect(requirements.features.booking).toBe(true);
+    expect(requirements.website.requiredPages).toEqual(["Home", "Menu", "Contact", "Booking"]);
+  });
+
   it("records offerings on the requirements without inventing any", () => {
     const base = emptyRequirements("restaurant");
     const requirements = RequirementsSchema.parse(
@@ -267,6 +349,14 @@ describe("website archetypes", () => {
 
     expect(
       classify({
+        productSummary: "A boutique hotel with rooms, suites and direct booking.",
+        description: "A family-run hotel in Kochi with check-in from 2pm and a pool.",
+        websiteType: "business",
+      }),
+    ).toBe("hotel");
+
+    expect(
+      classify({
         productSummary: "A home cleaning service covering the greater Manchester area.",
         description: "Domestic cleaning, end of tenancy cleaning and office cleaning.",
         websiteType: "business",
@@ -277,6 +367,15 @@ describe("website archetypes", () => {
   it("stays custom when nothing clear can be determined", () => {
     expect(classify({ websiteType: "other" })).toBe("custom");
     expect(classify({ description: "We are still working out what we need." })).toBe("custom");
+  });
+
+  it("plans hotel rooms, booking and property pages from the hotel archetype", () => {
+    const { pages } = planArchitecture("hotel", { requiredPages: [] });
+    const paths = pages.map((page) => page.path);
+    expect(paths).toContain("/rooms");
+    expect(paths).toContain("/booking");
+    expect(paths).toContain("/amenities");
+    expect(paths).not.toContain("/shop");
   });
 
   it("never plans shop pages unless the client sells online", () => {
@@ -296,17 +395,33 @@ describe("website archetypes", () => {
     expect(kept.map((page) => page.path)).toEqual(["/", "/contact"]);
   });
 
-  it("keeps commerce pages when the client actually asked for a shop", () => {
+  it("keeps a catalogue but drops unrequested checkout scaffolding", () => {
     const kept = stripIrrelevantPages(
       [
         { name: "Home", path: "/" },
         { name: "Shop", path: "/shop" },
         { name: "Cart", path: "/cart" },
+        { name: "Checkout", path: "/checkout" },
       ],
       "ecommerce",
       { commerce: true },
     );
-    expect(kept.map((page) => page.path)).toEqual(["/", "/shop", "/cart"]);
+    expect(kept.map((page) => page.path)).toEqual(["/", "/shop"]);
+  });
+
+  it("keeps checkout pages only when payments or an explicit request require them", () => {
+    const pages = [
+      { name: "Home", path: "/" },
+      { name: "Shop", path: "/shop" },
+      { name: "Cart", path: "/cart" },
+      { name: "Checkout", path: "/checkout" },
+    ];
+    expect(
+      stripIrrelevantPages(pages, "ecommerce", { commerce: true, payments: true }).map((page) => page.path),
+    ).toEqual(["/", "/shop", "/cart", "/checkout"]);
+    expect(
+      stripIrrelevantPages(pages, "ecommerce", { commerce: true, requested: ["Checkout"] }).map((page) => page.path),
+    ).toEqual(["/", "/shop", "/checkout"]);
   });
 });
 

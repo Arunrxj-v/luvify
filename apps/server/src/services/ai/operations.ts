@@ -12,6 +12,7 @@ import type { ProjectKnowledge } from "@luvify/shared";
 import { completeStructured } from "./json";
 import type { AIProvider } from "./provider";
 import { architecturePrompt, chatReplyPrompt, contentValidationPrompt, pageCopyPrompt, requirementExtractionPrompt } from "./prompts";
+import type { WebsiteGenerationSpecification } from "./prompt-builder";
 import {
   ArchitecturePlanSchema,
   ContentValidationSchema,
@@ -29,6 +30,8 @@ export interface AIProjectContext {
   siteName: string;
   websiteType: string;
   knowledge: ProjectKnowledge;
+  /** Structured, project-scoped specification built before generation. */
+  specification?: WebsiteGenerationSpecification;
 }
 
 /** Step 1 - turn a client message into a structured requirements patch. */
@@ -73,6 +76,7 @@ export async function planArchitecture(
     requiredPages: requirements.requiredPages,
     primaryGoal: requirements.primaryGoal,
     conversionAction: requirements.conversionAction,
+    ...(context.specification ? { specification: context.specification } : {}),
   });
   const result = await completeStructured(provider, {
     operation: "architecture_plan",
@@ -108,6 +112,7 @@ export async function generatePageCopy(
     knowledge: context.knowledge,
     architecture: input.architecture,
     page: input.page,
+    ...(context.specification ? { specification: context.specification } : {}),
   });
   const result = await completeStructured(provider, {
     operation: "page_content",
@@ -133,6 +138,7 @@ export async function validatePageCopy(
     knowledge: context.knowledge,
     page,
     copy,
+    ...(context.specification ? { specification: context.specification } : {}),
   });
   const result = await completeStructured(provider, {
     operation: "content_validation",

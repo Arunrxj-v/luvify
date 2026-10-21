@@ -398,6 +398,38 @@ describe("requirementUpdateToPatch", () => {
     expect(patch.content).toBeUndefined();
   });
 
+  it("keeps clothing options and product imagery in the ecommerce catalogue", () => {
+    const store = requirementsFor("Hunt Culture", "Streetwear label", ["hoodies"], "ecommerce");
+    const patch = requirementUpdateToPatch(
+      RequirementUpdateSchema.parse({
+        products: [
+          {
+            name: "Heavyweight Tee",
+            description: "Boxy cotton tee",
+            price: "₹1,499",
+            category: "T-shirts",
+            sizes: ["S", "M", "L"],
+            colors: ["Black"],
+            variants: ["Oversized"],
+            imageUrl: "https://cdn.test/tee.jpg",
+          },
+        ],
+      }),
+      store,
+    );
+
+    expect(patch.ecommerce?.products?.[0]).toEqual(
+      expect.objectContaining({
+        name: "Heavyweight Tee",
+        sizes: ["S", "M", "L"],
+        colors: ["Black"],
+        variants: ["Oversized"],
+        imageUrl: "https://cdn.test/tee.jpg",
+      }),
+    );
+    expect(store.content.products).toEqual([]);
+  });
+
   it("produces a patch that survives the real schema merge", () => {
     const patch = requirementUpdateToPatch(
       RequirementUpdateSchema.parse({

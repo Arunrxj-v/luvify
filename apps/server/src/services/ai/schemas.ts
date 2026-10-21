@@ -37,9 +37,30 @@ export const RequirementUpdateSchema = z.object({
   headline: text,
   subheadline: text,
   about: text,
-  services: z.array(z.object({ name: trimmed.min(1), description: text, price: text })).default([]),
+  services: z
+    .array(
+      z.object({
+        name: trimmed.min(1),
+        description: text,
+        price: text,
+        duration: text,
+        features: stringList,
+      }),
+    )
+    .default([]),
   products: z
-    .array(z.object({ name: trimmed.min(1), description: text, price: text, category: text }))
+    .array(
+      z.object({
+        name: trimmed.min(1),
+        description: text,
+        price: text,
+        category: text,
+        sizes: stringList,
+        colors: stringList,
+        variants: stringList,
+        imageUrl: text,
+      }),
+    )
     .default([]),
   contact: z.object({ email: text, phone: text, address: text, hours: text }).default({}),
   /** Client-stated removals ("we no longer sell hoodies"). */

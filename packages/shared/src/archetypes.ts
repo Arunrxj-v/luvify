@@ -12,6 +12,7 @@ export const WEBSITE_ARCHETYPES = [
   "saas",
   "healthcare",
   "restaurant",
+  "hotel",
   "portfolio",
   "agency",
   "business",
@@ -62,6 +63,16 @@ export const ARCHETYPE_ARCHITECTURES: Record<Exclude<WebsiteArchetype, "custom">
     { name: "About", path: "/about", purpose: "Introduce the clinic or hospital and its standards of care" },
     { name: "Contact", path: "/contact", purpose: "Directions, hours and general enquiries" },
     { name: "FAQ", path: "/faq", purpose: "Answer questions about visits, insurance and preparation" },
+  ],
+  hotel: [
+    { name: "Home", path: "/", purpose: "Introduce the property and drive room enquiries or bookings" },
+    { name: "Rooms", path: "/rooms", purpose: "Compare room types, amenities and supplied rates" },
+    { name: "Room Detail", path: "/rooms/room", purpose: "Describe one room type with photos and a booking CTA" },
+    { name: "Booking", path: "/booking", purpose: "Request or complete a stay using the client's booking method" },
+    { name: "Amenities", path: "/amenities", purpose: "Explain supplied facilities and services" },
+    { name: "Gallery", path: "/gallery", purpose: "Show real property and room photography" },
+    { name: "About", path: "/about", purpose: "Tell the property's real story" },
+    { name: "Contact", path: "/contact", purpose: "Location, check-in details and enquiries" },
   ],
   restaurant: [
     { name: "Home", path: "/", purpose: "Showcase the food and drive reservations or orders" },
@@ -162,6 +173,7 @@ const ARCHETYPE_SIGNALS: Record<Exclude<WebsiteArchetype, "custom">, string[]> =
   ecommerce: ["shop", "store", "products", "cart", "checkout", "sell online", "catalog", "order online", "shipping", "inventory"],
   saas: ["saas", "software", "platform", "subscription", "pricing plans", "free trial", "dashboard", "api", "onboarding", "churn", "automation", "workflow", "b2b", "integration", "users", "app"],
   healthcare: ["hospital", "clinic", "doctor", "patient", "appointment", "medical", "dental", "dentist", "pharmacy", "diagnosis", "treatment", "specialty", "specialist", "surgeon", "surgery", "nurse", "physician", "therapist", "physiotherapy", "telehealth", "vaccination"],
+  hotel: ["hotel", "resort", "hostel", "guesthouse", "guest house", "lodge", "motel", "inn", "accommodation", "room types", "suite", "check-in", "check in", "hospitality", "villa stay"],
   restaurant: ["restaurant", "menu", "cafe", "bakery", "cake", "pastry", "bread", "coffee", "food", "dish", "reservation", "table booking", "cuisine", "chef", "catering", "takeaway", "dining", "kitchen", "bistro", "diner", "eatery", "dessert", "sweets", "brewery"],
   portfolio: ["portfolio", "photography", "photographer", "designer", "artist", "illustrator", "videographer", "filmmaker", "showcase", "case stud", "creative work", "freelance"],
   agency: ["agency", "studio", "clients", "branding", "marketing", "consultancy", "consulting", "campaigns", "web design", "advertising", "public relations"],
@@ -209,6 +221,7 @@ const EXPLICIT_TYPE_ARCHETYPES: Record<string, WebsiteArchetype | undefined> = {
 const PAGE_ARCHETYPE_HINTS: Array<{ archetype: WebsiteArchetype; hints: string[] }> = [
   { archetype: "ecommerce", hints: ["cart", "checkout", "shop", "store", "catalog", "product page"] },
   { archetype: "healthcare", hints: ["doctor", "doctors", "appointment", "patient", "specialty", "clinic", "hospital", "department"] },
+  { archetype: "hotel", hints: ["hotel", "resort", "rooms", "room detail", "accommodation", "stay", "check-in"] },
   { archetype: "restaurant", hints: ["menu", "reservation", "order food", "table"] },
   { archetype: "saas", hints: ["pricing", "features page", "free trial", "documentation", "docs"] },
   { archetype: "portfolio", hints: ["portfolio", "case studies", "gallery of work"] },
@@ -377,6 +390,11 @@ function defaultJourneysFor(archetype: WebsiteArchetype, conversion: string | un
         { goal: "Browse by specialty", steps: ["Departments", "Doctors", "Book Appointment"] },
         { goal: "Ask the clinic", steps: ["Home", "Contact"] },
       ];
+    case "hotel":
+      return [
+        { goal: "Choose and book a room", steps: ["Home", "Rooms", "Room Detail", "Booking"] },
+        { goal: "Check the property", steps: ["Home", "Amenities", "Gallery", "Contact"] },
+      ];
     case "restaurant":
       return [
         { goal: "Reserve a table", steps: ["Home", "Menu", "Reservations"] },
@@ -403,17 +421,25 @@ const COMMERCE_SECTIONS = new Set(["ProductGrid", "ProductCard", "Pricing"]);
 export function stripIrrelevantPages(
   pages: Array<{ name: string; path: string }>,
   archetype: WebsiteArchetype,
-  options: { requested?: string[]; commerce?: boolean } = {},
+  options: { requested?: string[]; commerce?: boolean; payments?: boolean } = {},
 ): Array<{ name: string; path: string }> {
   const requested = new Set((options.requested ?? []).map((name) => name.trim().toLowerCase()).filter(Boolean));
   const isRequested = (page: { name: string; path: string }) =>
     requested.has(page.name.toLowerCase()) || requested.has(page.path.toLowerCase().replace(/^\//, ""));
   const slugOf = (path: string) => path.toLowerCase().replace(/^\//, "").split("/")[0] ?? "";
   const COMMERCE_PAGES = new Set(["shop", "cart", "checkout", "product", "products"]);
+  const CHECKOUT_PAGES = new Set(["cart", "checkout"]);
 
   return pages.filter((page) => {
     if (isRequested(page)) return true;
     if (page.path === "/") return true;
+    if (
+      archetype === "ecommerce" &&
+      !options.payments &&
+      CHECKOUT_PAGES.has(slugOf(page.path))
+    ) {
+      return false;
+    }
     if (!options.commerce && archetype !== "ecommerce" && archetype !== "marketplace") {
       if (COMMERCE_PAGES.has(slugOf(page.path)) || COMMERCE_PAGES.has(page.name.toLowerCase())) return false;
     }
@@ -434,6 +460,7 @@ export function archetypeLabel(archetype: string): string {
     saas: "SaaS product",
     healthcare: "Healthcare appointment platform",
     restaurant: "Restaurant / food",
+    hotel: "Hotel / hospitality",
     portfolio: "Portfolio",
     agency: "Agency / studio",
     business: "Business / services",

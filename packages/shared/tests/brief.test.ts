@@ -410,7 +410,16 @@ describe("hydrateDocument", () => {
   it("matches product photos by filename <-> product name", () => {
     const requirements = emptyRequirements();
     requirements.content.products = [
-      { name: "Masala Dosa", description: "Rice cakes, coconut chutney", price: "₹250", category: "Mains" },
+      {
+        name: "Masala Dosa",
+        description: "Rice cakes, coconut chutney",
+        price: "₹250",
+        category: "Mains",
+        sizes: [],
+        colors: [],
+        variants: [],
+        imageUrl: "",
+      },
     ];
     const doc = createSiteFromTemplate(
       "ecommerce",

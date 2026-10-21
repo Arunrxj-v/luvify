@@ -25,7 +25,8 @@
     "db:studio": "prisma studio --schema prisma/sqlite/schema.prisma",
     "ai:probe": "tsx --tsconfig tsconfig.base.json apps/server/scripts/ai-probe.ts",
     "setup": "npm run db:sqlite && npm run db:seed",
-    "e2e": "tsx --tsconfig tsconfig.base.json apps/server/scripts/e2e-flow.ts"
+    "e2e": "tsx --tsconfig tsconfig.base.json apps/server/scripts/e2e-flow.ts",
+    "e2e:hunt": "tsx --tsconfig tsconfig.base.json apps/server/scripts/hunt-culture-live.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
