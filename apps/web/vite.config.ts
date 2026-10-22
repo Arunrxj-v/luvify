@@ -6,6 +6,7 @@ const apiPort = Number(process.env.PORT ?? 4000) || 4000;
 const apiTarget = `http://localhost:${apiPort}`;
 
 export default defineConfig({
+  base: '/luvify/',
   plugins: [react()],
   server: {
     port: 5173,
